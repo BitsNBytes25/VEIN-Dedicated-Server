@@ -35,6 +35,7 @@
 INSTALLER_VERSION="v20251103"
 GAME="VEIN"
 GAME_DESC="VEIN Dedicated Server"
+REPO="BitsNBytes25/VEIN-Dedicated-Server"
 # Steam ID of the game
 STEAM_ID="2131400"
 GAME_USER="steam"
@@ -649,16 +650,21 @@ EOF
 
 function install_management() {
 	# Install management console and its dependencies
-	#sudo -u $GAME_USER python3 -m venv "$GAME_DIR/.venv"
-	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install --upgrade pip
-	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install ueconfigparser
-	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install unreal-ini-parser
+	local TMP=$(mktemp)
+	curl -sL "https://raw.githubusercontent.com/${REPO}/refs/tags/${INSTALLER_VERSION}/dist/manage.py" -o $TMP
+	if [ $? -ne 0 ]; then
+		echo "Could not download management script!" >&2
+		return
+	fi
 
-	# TEST/DEV ONLY
-	here="$(dirname "$0")"
-	cp "$here/manage.py" "$GAME_DIR/manage.py"
+	mv $TMP "$GAME_DIR/manage.py"
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/manage.py"
 	chmod +x "$GAME_DIR/manage.py"
+
+	# If a pyenv is required:
+	#sudo -u $GAME_USER python3 -m venv "$GAME_DIR/.venv"
+	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install --upgrade pip
+	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install ...
 }
 
 ############################################
@@ -687,7 +693,7 @@ print_header "$GAME_DESC *unofficial* Installer ${INSTALLER_VERSION}"
 if [ $OPT_MODE_INSTALL -eq 1 ]; then
 
 	FIREWALL="$(prompt_yn --default-yes "Install system firewall?")"
-	# install_vein
+	install_vein
 
 	install_management
 
@@ -696,19 +702,11 @@ if [ $OPT_MODE_INSTALL -eq 1 ]; then
     echo 'Game server will auto-update on restarts and will auto-start on server boot.'
     echo ''
     echo "Game files:     $GAME_DIR/AppFiles/"
-    echo "Game settings:  $GAME_DIR/PalWorldSettings.ini"
+    echo "Game settings:  $GAME_DIR/Game.ini"
+    echo "GUS settings:   $GAME_DIR/GameUserSettings.ini"
+    echo "Log:            $GAME_DIR/Vein.log"
     echo ''
     echo "Next steps: configure your server by running"
     echo "sudo $GAME_DIR/manage.py"
 fi
 
-# Install management script
-#cat > $GAME_DIR/manage.py <<EOF
-## script:manage.py
-#EOF
-#chown $GAME_USER:$GAME_USER $GAME_DIR/manage.py
-#chmod +x $GAME_DIR/manage.py
-
-
-# Create some helpful links for the user.
-#[ -h "$GAME_DIR/PalWorldSettings.ini" ] || sudo -u steam ln -s $GAME_DIR/AppFiles/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini "$GAME_DIR/PalWorldSettings.ini"

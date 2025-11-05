@@ -75,14 +75,19 @@ EOF
 
 function install_management() {
 	# Install management console and its dependencies
-	#sudo -u $GAME_USER python3 -m venv "$GAME_DIR/.venv"
-	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install --upgrade pip
-	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install ueconfigparser
-	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install unreal-ini-parser
+	local TMP=$(mktemp)
+	curl -sL "https://raw.githubusercontent.com/${REPO}/refs/tags/${INSTALLER_VERSION}/dist/manage.py" -o $TMP
+	if [ $? -ne 0 ]; then
+		echo "Could not download management script!" >&2
+		return
+	fi
 
-	# TEST/DEV ONLY
-	here="$(dirname "$0")"
-	cp "$here/manage.py" "$GAME_DIR/manage.py"
+	mv $TMP "$GAME_DIR/manage.py"
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/manage.py"
 	chmod +x "$GAME_DIR/manage.py"
+
+	# If a pyenv is required:
+	#sudo -u $GAME_USER python3 -m venv "$GAME_DIR/.venv"
+	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install --upgrade pip
+	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install ...
 }

@@ -851,7 +851,7 @@ here = os.path.dirname(os.path.realpath(__file__))
 
 GAME_DESC = 'VEIN Dedicated Server'
 GAME_SERVICE='vein-server'
-REPO = 'https://github.com/BitsNBytes25/VEIN-Dedicated-Server'
+REPO = 'BitsNBytes25/VEIN-Dedicated-Server'
 FUNDING = 'https://ko-fi.com/bitsandbytes'
 ICON_ENABLED = '✅'
 ICON_STOPPED = '🛑'
@@ -1505,7 +1505,7 @@ def menu_main(game: GameService):
 	while stay:
 		print_header('Welcome to the %s Manager' % GAME_DESC)
 		if REPO != '':
-			print('Found an issue? %s/issues' % REPO)
+			print('Found an issue? https://github.com/%s/issues' % REPO)
 		if FUNDING != '':
 			print('Want to help financially support this project? %s' % FUNDING)
 
