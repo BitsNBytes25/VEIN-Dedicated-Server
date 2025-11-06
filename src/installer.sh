@@ -51,6 +51,7 @@ STEAM_DIR="/home/$GAME_USER/.local/share/Steam"
 # scriptlet:_common/require_root.sh
 # scriptlet:_common/get_firewall.sh
 # scriptlet:bz_eval_tui/prompt_text.sh
+# scriptlet:bz_eval_tui/prompt_yn.sh
 # scriptlet:bz_eval_tui/print_header.sh
 # scriptlet:_local/vein-server.sh
 
