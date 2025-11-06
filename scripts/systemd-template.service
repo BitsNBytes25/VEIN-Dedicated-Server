@@ -13,7 +13,7 @@ WorkingDirectory=$GAME_DIR/AppFiles
 Environment=XDG_RUNTIME_DIR=/run/user/$(id -u $GAME_USER)
 # Only required for games which utilize Proton
 #Environment="STEAM_COMPAT_CLIENT_INSTALL_PATH=$STEAM_DIR"
-ExecStartPre=/usr/games/steamcmd +force_install_dir $GAME_DIR/AppFiles +login anonymous +app_update $STEAM_ID validate +quit
+ExecStartPre=/usr/games/steamcmd +force_install_dir $GAME_DIR/AppFiles +login anonymous +app_update ${STEAM_ID}${STEAMBETABRANCH} validate +quit
 ExecStart=$GAME_DIR/AppFiles/VeinServer.sh -log
 #ExecStop=$GAME_DIR/manage.py --pre-stop
 Restart=on-failure

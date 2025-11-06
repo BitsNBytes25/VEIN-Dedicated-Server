@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import json
 from time import time, sleep
 from urllib import request
@@ -10,7 +11,6 @@ from typing import Union
 import os
 from pathlib import Path
 from typing import List
-
 
 def get_enabled_firewall() -> str:
 	"""
@@ -1599,9 +1599,21 @@ def menu_main(game: GameService):
 			game.config.save()
 
 
+parser = argparse.ArgumentParser('manage.py')
+parser.add_argument(
+	'--pre-stop',
+	help='Send notifications to game players and Discord and save the world',
+	action='store_true'
+)
+args = parser.parse_args()
+
 g = GameService()
 
-if not g.config.configured:
-	menu_first_run(g)
+if args.pre_stop:
+	g.pre_stop()
+else:
+	# Default mode - interactive menu
+	if not g.config.configured:
+		menu_first_run(g)
 
-menu_main(g)
+	menu_main(g)

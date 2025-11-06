@@ -616,7 +616,7 @@ WorkingDirectory=$GAME_DIR/AppFiles
 Environment=XDG_RUNTIME_DIR=/run/user/$(id -u $GAME_USER)
 # Only required for games which utilize Proton
 #Environment="STEAM_COMPAT_CLIENT_INSTALL_PATH=$STEAM_DIR"
-ExecStartPre=/usr/games/steamcmd +force_install_dir $GAME_DIR/AppFiles +login anonymous +app_update $STEAM_ID validate +quit
+ExecStartPre=/usr/games/steamcmd +force_install_dir $GAME_DIR/AppFiles +login anonymous +app_update ${STEAM_ID}${STEAMBETABRANCH} validate +quit
 ExecStart=$GAME_DIR/AppFiles/VeinServer.sh -log
 #ExecStop=$GAME_DIR/manage.py --pre-stop
 Restart=on-failure
@@ -684,6 +684,22 @@ if systemctl -q is-active $GAME_SERVICE; then
 	exit 1
 fi
 
+if [ -e "$GAME_DIR/AppFiles/VeinServer.sh" ]; then
+	EXISTING=1
+else
+	EXISTING=0
+fi
+
+if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
+	if egrep -q '^ExecStartPre=.*-beta ' "/etc/systemd/system/${GAME_SERVICE}.service"; then
+		BETA="$(egrep '^ExecStartPre=.*-beta ' /etc/systemd/system/vein-server.service | sed 's:.*-beta \([^ ]*\) .*:\1:')"
+	else
+		BETA=""
+	fi
+else
+	BETA=""
+fi
+
 ############################################
 ## Installer
 ############################################
@@ -692,7 +708,29 @@ print_header "$GAME_DESC *unofficial* Installer ${INSTALLER_VERSION}"
 
 if [ $OPT_MODE_INSTALL -eq 1 ]; then
 
-	FIREWALL="$(prompt_yn --default-yes "Install system firewall?")"
+	if [ $EXISTING -eq 0 ]; then
+		FIREWALL="$(prompt_yn --default-yes "Install system firewall?")"
+	else
+		FIREWALL=0
+	fi
+
+	if [ -n "$BETA" ]; then
+		echo "Using beta branch $BETA"
+		if [ "$(prompt_yn --default-no "Switch to stable branch?")" == "1" ]; then
+			BETA=""
+		fi
+	else
+		if [ "$(prompt_yn --default-no "Install experimental branch?")" == "1" ]; then
+			BETA="experimental"
+		fi
+	fi
+
+	if [ -n "$BETA" ]; then
+		STEAMBETABRANCH=" -beta $BETA"
+	else
+		STEAMBETABRANCH=""
+	fi
+
 	install_vein
 
 	install_management
