@@ -23,6 +23,8 @@
 #
 # Syntax:
 #   --install  - Perform an installation (default if no options given)
+#   --uninstall  - Perform an uninstallation
+#   --dir=<path> - Use a custom installation directory instead of the default (optional)
 #
 # Changelog:
 #   20251103 - New installer
@@ -32,26 +34,55 @@
 ############################################
 
 # Name of the game (used to create the directory)
-INSTALLER_VERSION="v20251103"
+INSTALLER_VERSION="v20251109~DEV"
 GAME="VEIN"
 GAME_DESC="VEIN Dedicated Server"
 REPO="BitsNBytes25/VEIN-Dedicated-Server"
 # Steam ID of the game
 STEAM_ID="2131400"
 GAME_USER="steam"
-GAME_DIR="/home/$GAME_USER/$GAME"
+GAME_DIR="/home/${GAME_USER}/${GAME}"
 GAME_SERVICE="vein-server"
 # Force installation directory for game
 # steam produces varying results, sometimes in ~/.local/share/Steam, other times in ~/Steam
-STEAM_DIR="/home/$GAME_USER/.local/share/Steam"
+STEAM_DIR="/home/${GAME_USER}/.local/share/Steam"
+# VEIN uses the default Epic save handler which stores saves in ~/.config
+SAVE_DIR="/home/${GAME_USER}/.config/Epic/Vein/Saved/SaveGames/"
 #PORT_GAME=7777
 #PORT_QUERY=27015
 
+function usage() {
+  cat >&2 <<EOD
+Usage: $0 [options]
+
+Options:
+    --install  - Perform an installation (default if no options given)
+    --uninstall  - Perform an uninstallation
+    --dir=<path> - Use a custom installation directory instead of the default (optional)
+
+https://ramjet.notion.site
+
+Please ensure to run this script as root (or at least with sudo)
+
+@LICENSE AGPLv3
+EOD
+  exit 1
+}
+
 # Parse arguments
 OPT_MODE_INSTALL=0
+OPT_MODE_UNINSTALL=0
+OPT_OVERRIDE_DIR=""
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--install) OPT_MODE_INSTALL=1; shift 1;;
+		--uninstall) OPT_MODE_UNINSTALL=1; shift 1;;
+		--dir=*)
+			OPT_OVERRIDE_DIR="${1#*=}";
+			if [ "${OPT_OVERRIDE_DIR:0:1}" == "'" -a "${OPT_OVERRIDE_DIR:0-1}" == "'" ]; then OPT_OVERRIDE_DIR="${OPT_OVERRIDE_DIR:1:-1}"; fi;
+			if [ "${OPT_OVERRIDE_DIR:0:1}" == '"' -a "${OPT_OVERRIDE_DIR:0-1}" == '"' ]; then OPT_OVERRIDE_DIR="${OPT_OVERRIDE_DIR:1:-1}"; fi;
+			shift 1;;
+		-h|--help) usage;;
 	esac
 done
 
@@ -92,89 +123,6 @@ function get_available_firewall() {
 	else
 		echo "none"
 	fi
-}
-##
-# Prompt user for a text response
-#
-# Arguments:
-#   --default="..."   Default text to use if no response is given
-#
-# Returns:
-#   text as entered by user
-#
-function prompt_text() {
-	local DEFAULT=""
-	local PROMPT="Enter some text"
-	local RESPONSE=""
-
-	while [ $# -ge 1 ]; do
-		case $1 in
-			--default=*) DEFAULT="${1#*=}";;
-			*) PROMPT="$1";;
-		esac
-		shift
-	done
-
-	echo "$PROMPT" >&2
-	echo -n '> : ' >&2
-	read RESPONSE
-	if [ "$RESPONSE" == "" ]; then
-		echo "$DEFAULT"
-	else
-		echo "$RESPONSE"
-	fi
-}
-##
-# Prompt user for a yes or no response
-#
-# Arguments:
-#   --invert            Invert the response (yes becomes 0, no becomes 1)
-#   --default-yes       Default to yes if no response is given
-#   --default-no        Default to no if no response is given
-#
-# Returns:
-#   1 for yes, 0 for no (or inverted if --invert is set)
-#
-function prompt_yn() {
-	local YES=1
-	local NO=0
-	local DEFAULT="n"
-	local PROMPT="Yes or no?"
-	local RESPONSE=""
-
-	while [ $# -ge 1 ]; do
-		case $1 in
-			--invert) YES=0; NO=1;;
-			--default-yes) DEFAULT="y";;
-			--default-no) DEFAULT="n";;
-			*) PROMPT="$1";;
-		esac
-		shift
-	done
-
-	echo "$PROMPT" >&2
-	if [ "$DEFAULT" == "y" ]; then
-		DEFAULT="$YES"
-		echo -n "> (Y/n): " >&2
-	else
-		DEFAULT="$NO"
-		echo -n "> (y/N): " >&2
-	fi
-	read RESPONSE
-	case "$RESPONSE" in
-		[yY]*) echo $YES ;;
-		[nN]*) echo $NO ;;
-		*) echo $DEFAULT;;
-	esac
-}
-##
-# Print a header message
-#
-function print_header() {
-	local header="$1"
-	echo "================================================================================"
-	printf "%*s\n" $(((${#header}+80)/2)) "$header"
-    echo ""
 }
 ##
 # Check if the OS is "like" a certain type
@@ -285,117 +233,6 @@ function os_like_macos() {
 		echo 0
 	fi
 }
-##
-# Get the operating system version
-#
-# Just the major version number is returned
-#
-function os_version() {
-	if [ "$(uname -s)" == 'FreeBSD' ]; then
-		local _V="$(uname -K)"
-		if [ ${#_V} -eq 6 ]; then
-			echo "${_V:0:1}"
-		elif [ ${#_V} -eq 7 ]; then
-			echo "${_V:0:2}"
-		fi
-
-	elif [ -f '/etc/os-release' ]; then
-		local VERS="$(egrep '^VERSION_ID=' /etc/os-release | sed 's:VERSION_ID=::')"
-
-		if [[ "$VERS" =~ '"' ]]; then
-			# Strip quotes around the OS name
-			VERS="$(echo "$VERS" | sed 's:"::g')"
-		fi
-
-		if [[ "$VERS" =~ \. ]]; then
-			# Remove the decimal point and everything after
-			# Trims "24.04" down to "24"
-			VERS="${VERS/\.*/}"
-		fi
-
-		if [[ "$VERS" =~ "v" ]]; then
-			# Remove the "v" from the version
-			# Trims "v24" down to "24"
-			VERS="${VERS/v/}"
-		fi
-
-		echo "$VERS"
-
-	else
-		echo 0
-	fi
-}
-
-##
-# Install SteamCMD
-function install_steamcmd() {
-	echo "Installing SteamCMD..."
-
-	TYPE_DEBIAN="$(os_like_debian)"
-	TYPE_UBUNTU="$(os_like_ubuntu)"
-	OS_VERSION="$(os_version)"
-
-	# Preliminary requirements
-	if [ "$TYPE_UBUNTU" == 1 ]; then
-		add-apt-repository -y multiverse
-		dpkg --add-architecture i386
-		apt update
-
-		# By using this script, you agree to the Steam license agreement at https://store.steampowered.com/subscriber_agreement/
-		# and the Steam privacy policy at https://store.steampowered.com/privacy_agreement/
-		# Since this is meant to support unattended installs, we will forward your acceptance of their license.
-		echo steam steam/question select "I AGREE" | debconf-set-selections
-		echo steam steam/license note '' | debconf-set-selections
-
-		apt install -y steamcmd
-	elif [ "$TYPE_DEBIAN" == 1 ]; then
-		dpkg --add-architecture i386
-		apt update
-
-		if [ "$OS_VERSION" -le 12 ]; then
-			apt install -y software-properties-common apt-transport-https dirmngr ca-certificates lib32gcc-s1
-
-			# Enable "non-free" repos for Debian (for steamcmd)
-			# https://stackoverflow.com/questions/76688863/apt-add-repository-doesnt-work-on-debian-12
-			add-apt-repository -y -U http://deb.debian.org/debian -c non-free-firmware -c non-free
-			if [ $? -ne 0 ]; then
-				echo "Workaround failed to add non-free repos, trying new method instead"
-				apt-add-repository -y non-free
-			fi
-		else
-			# Debian Trixie and later
-			if [ -e /etc/apt/sources.list ]; then
-				if ! grep -q ' non-free ' /etc/apt/sources.list; then
-					sed -i 's/main/main non-free-firmware non-free contrib/g' /etc/apt/sources.list
-				fi
-			elif [ -e /etc/apt/sources.list.d/debian.sources ]; then
-				if ! grep -q ' non-free ' /etc/apt/sources.list.d/debian.sources; then
-					sed -i 's/main/main non-free-firmware non-free contrib/g' /etc/apt/sources.list.d/debian.sources
-				fi
-			else
-				echo "Could not find a sources.list file to enable non-free repos" >&2
-				exit 1
-			fi
-		fi
-
-		# Install steam repo
-		curl -s http://repo.steampowered.com/steam/archive/stable/steam.gpg > /usr/share/keyrings/steam.gpg
-		echo "deb [arch=amd64,i386 signed-by=/usr/share/keyrings/steam.gpg] http://repo.steampowered.com/steam/ stable steam" > /etc/apt/sources.list.d/steam.list
-
-		# By using this script, you agree to the Steam license agreement at https://store.steampowered.com/subscriber_agreement/
-		# and the Steam privacy policy at https://store.steampowered.com/privacy_agreement/
-		# Since this is meant to support unattended installs, we will forward your acceptance of their license.
-		echo steam steam/question select "I AGREE" | debconf-set-selections
-		echo steam steam/license note '' | debconf-set-selections
-
-		# Install steam binary and steamcmd
-		apt update
-		apt install -y steamcmd
-	else
-		echo 'Unsupported or unknown OS' >&2
-		exit 1
-	fi
-}
 
 ##
 # Install a package with the system's package manager.
@@ -438,29 +275,6 @@ function package_install (){
 		echo 'package_install: Unsupported or unknown OS' >&2
 		echo 'Please report this at https://github.com/cdp1337/ScriptsCollection/issues' >&2
 		exit 1
-	fi
-}
-
-##
-# Install UFW
-#
-function install_ufw() {
-	if [ "$(os_like_rhel)" == 1 ]; then
-		# RHEL/CentOS requires EPEL to be installed first
-		package_install epel-release
-	fi
-
-	package_install ufw
-
-	# Auto-enable a newly installed firewall
-	ufw --force enable
-	systemctl enable ufw
-	systemctl start ufw
-
-	# Auto-add the current user's remote IP to the whitelist (anti-lockout rule)
-	local TTY_IP="$(who am i | awk '{print $5}' | sed 's/[()]//g')"
-	if [ -n "$TTY_IP" ]; then
-		ufw allow from $TTY_IP comment 'Anti-lockout rule based on first install of UFW'
 	fi
 }
 ##
@@ -599,6 +413,283 @@ function firewall_allow() {
 		exit 1
 	fi
 }
+##
+# Simple download utility function
+#
+# Uses either cURL or wget based on which is available
+#
+# Returns 0 on success, 1 on failure
+function download() {
+	local SOURCE="$1"
+	local DESTINATION="$2"
+
+	if [ -z "$SOURCE" ] || [ -z "$DESTINATION" ]; then
+		echo "download: Missing required parameters!" >&2
+		return 1
+	fi
+
+	if [ -n "$(which curl)" ]; then
+		if curl -fsL "$SOURCE" -o "$DESTINATION"; then
+			return 0
+		else
+			echo "download: curl failed to download $SOURCE" >&2
+			return 1
+		fi
+	elif [ -n "$(which wget)" ]; then
+		if wget -q "$SOURCE" -O "$DESTINATION"; then
+			return 0
+		else
+			echo "download: wget failed to download $SOURCE" >&2
+			return 1
+		fi
+	else
+		echo "download: Neither curl nor wget is installed, cannot download!" >&2
+		return 1
+	fi
+}
+##
+# Prompt user for a text response
+#
+# Arguments:
+#   --default="..."   Default text to use if no response is given
+#
+# Returns:
+#   text as entered by user
+#
+function prompt_text() {
+	local DEFAULT=""
+	local PROMPT="Enter some text"
+	local RESPONSE=""
+
+	while [ $# -ge 1 ]; do
+		case $1 in
+			--default=*) DEFAULT="${1#*=}";;
+			*) PROMPT="$1";;
+		esac
+		shift
+	done
+
+	echo "$PROMPT" >&2
+	echo -n '> : ' >&2
+	read RESPONSE
+	if [ "$RESPONSE" == "" ]; then
+		echo "$DEFAULT"
+	else
+		echo "$RESPONSE"
+	fi
+}
+##
+# Prompt user for a yes or no response
+#
+# Arguments:
+#   --invert            Invert the response (yes becomes 0, no becomes 1)
+#   --default-yes       Default to yes if no response is given
+#   --default-no        Default to no if no response is given
+#   -q                  Quiet mode (no output text after response)
+#
+# Returns:
+#   1 for yes, 0 for no (or inverted if --invert is set)
+#
+function prompt_yn() {
+	local TRUE=0 # Bash convention: 0 is success/true
+	local YES=1
+	local FALSE=1 # Bash convention: non-zero is failure/false
+	local NO=0
+	local DEFAULT="n"
+	local DEFAULT_CODE=1
+	local PROMPT="Yes or no?"
+	local RESPONSE=""
+	local QUIET=0
+
+	while [ $# -ge 1 ]; do
+		case $1 in
+			--invert) YES=0; NO=1 TRUE=1; FALSE=0;;
+			--default-yes) DEFAULT="y";;
+			--default-no) DEFAULT="n";;
+			-q) QUIET=1;;
+			*) PROMPT="$1";;
+		esac
+		shift
+	done
+
+	echo "$PROMPT" >&2
+	if [ "$DEFAULT" == "y" ]; then
+		DEFAULT="$YES"
+		DEFAULT_CODE=$TRUE
+		echo -n "> (Y/n): " >&2
+	else
+		DEFAULT="$NO"
+		DEFAULT_CODE=$FALSE
+		echo -n "> (y/N): " >&2
+	fi
+	read RESPONSE
+	case "$RESPONSE" in
+		[yY]*)
+			if [ $QUIET -eq 0 ]; then
+				echo $YES
+			fi
+			return $TRUE;;
+		[nN]*)
+			if [ $QUIET -eq 0 ]; then
+				echo $NO
+			fi
+			return $FALSE;;
+		*)
+			if [ $QUIET -eq 0 ]; then
+				echo $DEFAULT
+			fi
+			return $DEFAULT_CODE;;
+	esac
+}
+##
+# Print a header message
+#
+function print_header() {
+	local header="$1"
+	echo "================================================================================"
+	printf "%*s\n" $(((${#header}+80)/2)) "$header"
+    echo ""
+}
+##
+# Get the operating system version
+#
+# Just the major version number is returned
+#
+function os_version() {
+	if [ "$(uname -s)" == 'FreeBSD' ]; then
+		local _V="$(uname -K)"
+		if [ ${#_V} -eq 6 ]; then
+			echo "${_V:0:1}"
+		elif [ ${#_V} -eq 7 ]; then
+			echo "${_V:0:2}"
+		fi
+
+	elif [ -f '/etc/os-release' ]; then
+		local VERS="$(egrep '^VERSION_ID=' /etc/os-release | sed 's:VERSION_ID=::')"
+
+		if [[ "$VERS" =~ '"' ]]; then
+			# Strip quotes around the OS name
+			VERS="$(echo "$VERS" | sed 's:"::g')"
+		fi
+
+		if [[ "$VERS" =~ \. ]]; then
+			# Remove the decimal point and everything after
+			# Trims "24.04" down to "24"
+			VERS="${VERS/\.*/}"
+		fi
+
+		if [[ "$VERS" =~ "v" ]]; then
+			# Remove the "v" from the version
+			# Trims "v24" down to "24"
+			VERS="${VERS/v/}"
+		fi
+
+		echo "$VERS"
+
+	else
+		echo 0
+	fi
+}
+
+##
+# Install SteamCMD
+function install_steamcmd() {
+	echo "Installing SteamCMD..."
+
+	TYPE_DEBIAN="$(os_like_debian)"
+	TYPE_UBUNTU="$(os_like_ubuntu)"
+	OS_VERSION="$(os_version)"
+
+	# Preliminary requirements
+	if [ "$TYPE_UBUNTU" == 1 ]; then
+		add-apt-repository -y multiverse
+		dpkg --add-architecture i386
+		apt update
+
+		# By using this script, you agree to the Steam license agreement at https://store.steampowered.com/subscriber_agreement/
+		# and the Steam privacy policy at https://store.steampowered.com/privacy_agreement/
+		# Since this is meant to support unattended installs, we will forward your acceptance of their license.
+		echo steam steam/question select "I AGREE" | debconf-set-selections
+		echo steam steam/license note '' | debconf-set-selections
+
+		apt install -y steamcmd
+	elif [ "$TYPE_DEBIAN" == 1 ]; then
+		dpkg --add-architecture i386
+		apt update
+
+		if [ "$OS_VERSION" -le 12 ]; then
+			apt install -y software-properties-common apt-transport-https dirmngr ca-certificates lib32gcc-s1
+
+			# Enable "non-free" repos for Debian (for steamcmd)
+			# https://stackoverflow.com/questions/76688863/apt-add-repository-doesnt-work-on-debian-12
+			add-apt-repository -y -U http://deb.debian.org/debian -c non-free-firmware -c non-free
+			if [ $? -ne 0 ]; then
+				echo "Workaround failed to add non-free repos, trying new method instead"
+				apt-add-repository -y non-free
+			fi
+		else
+			# Debian Trixie and later
+			if [ -e /etc/apt/sources.list ]; then
+				if ! grep -q ' non-free ' /etc/apt/sources.list; then
+					sed -i 's/main/main non-free-firmware non-free contrib/g' /etc/apt/sources.list
+				fi
+			elif [ -e /etc/apt/sources.list.d/debian.sources ]; then
+				if ! grep -q ' non-free ' /etc/apt/sources.list.d/debian.sources; then
+					sed -i 's/main/main non-free-firmware non-free contrib/g' /etc/apt/sources.list.d/debian.sources
+				fi
+			else
+				echo "Could not find a sources.list file to enable non-free repos" >&2
+				exit 1
+			fi
+		fi
+
+		# Install steam repo
+		download http://repo.steampowered.com/steam/archive/stable/steam.gpg /usr/share/keyrings/steam.gpg
+		echo "deb [arch=amd64,i386 signed-by=/usr/share/keyrings/steam.gpg] http://repo.steampowered.com/steam/ stable steam" > /etc/apt/sources.list.d/steam.list
+
+		# By using this script, you agree to the Steam license agreement at https://store.steampowered.com/subscriber_agreement/
+		# and the Steam privacy policy at https://store.steampowered.com/privacy_agreement/
+		# Since this is meant to support unattended installs, we will forward your acceptance of their license.
+		echo steam steam/question select "I AGREE" | debconf-set-selections
+		echo steam steam/license note '' | debconf-set-selections
+
+		# Install steam binary and steamcmd
+		apt update
+		apt install -y steamcmd
+	else
+		echo 'Unsupported or unknown OS' >&2
+		exit 1
+	fi
+}
+
+##
+# Install UFW
+#
+function install_ufw() {
+	if [ "$(os_like_rhel)" == 1 ]; then
+		# RHEL/CentOS requires EPEL to be installed first
+		package_install epel-release
+	fi
+
+	package_install ufw
+
+	# Auto-enable a newly installed firewall
+	ufw --force enable
+	systemctl enable ufw
+	systemctl start ufw
+
+	# Auto-add the current user's remote IP to the whitelist (anti-lockout rule)
+	local TTY_IP="$(who am i | awk '{print $5}' | sed 's/[()]//g')"
+	if [ -n "$TTY_IP" ]; then
+		ufw allow from $TTY_IP comment 'Anti-lockout rule based on first install of UFW'
+	fi
+}
+
+print_header "$GAME_DESC *unofficial* Installer ${INSTALLER_VERSION}"
+
+############################################
+## Installer Actions
+############################################
 
 ##
 # Install the VEIN game server using Steam
@@ -609,6 +700,7 @@ function firewall_allow() {
 #   STEAM_ID     - Steam App ID of the game
 #   GAME_DESC    - Description of the game (for logging purposes)
 #   GAME_SERVICE - Service name to install with Systemd
+#   SAVE_DIR     - Directory to store game save files
 #
 function install_vein() {
 	# Create a "steam" user account
@@ -632,8 +724,7 @@ function install_vein() {
 	# Install steam binary and steamcmd
 	install_steamcmd
 
-	sudo -u $GAME_USER /usr/games/steamcmd +force_install_dir "$GAME_DIR/AppFiles" +login anonymous +app_update $STEAM_ID validate +quit
-	if [ $? -ne 0 ]; then
+	if ! sudo -u $GAME_USER /usr/games/steamcmd +force_install_dir "$GAME_DIR/AppFiles" +login anonymous +app_update $STEAM_ID validate +quit; then
 		echo "Could not install $GAME_DESC, exiting" >&2
 		exit 1
 	fi
@@ -663,7 +754,7 @@ ExecStartPre=/usr/games/steamcmd +force_install_dir $GAME_DIR/AppFiles +login an
 ExecStart=$GAME_DIR/AppFiles/VeinServer.sh -log
 #ExecStop=$GAME_DIR/manage.py --pre-stop
 Restart=on-failure
-RestartSec=20s
+RestartSec=1800s
 TimeoutStartSec=600s
 
 [Install]
@@ -671,6 +762,9 @@ WantedBy=multi-user.target
 EOF
     systemctl daemon-reload
     systemctl enable $GAME_SERVICE
+
+    # Ensure necessary directories exist
+    [ -d "$SAVE_DIR" ] || sudo -u $GAME_USER mkdir -p "$SAVE_DIR"
 
     # Ensure game configurations exist, (for convenience)
     [ -e "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer" ] || \
@@ -685,8 +779,7 @@ EOF
 		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/Game.ini" "$GAME_DIR/Game.ini"
 	[ -h "$GAME_DIR/GameUserSettings.ini" ] || \
 		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/GameUserSettings.ini" "$GAME_DIR/GameUserSettings.ini"
-	[ -h "$GAME_DIR/SaveGames" ] || \
-		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/SaveGames" "$GAME_DIR/SaveGames"
+	[ -h "$GAME_DIR/SaveGames" ] || sudo -u $GAME_USER ln -s "$SAVE_DIR" "$GAME_DIR/SaveGames"
 	[ -h "$GAME_DIR/Vein.log" ] || \
 		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/Logs/Vein.log" "$GAME_DIR/Vein.log"
 }
@@ -694,10 +787,19 @@ EOF
 function install_management() {
 	# Install management console and its dependencies
 	local TMP=$(mktemp)
-	curl -sL "https://raw.githubusercontent.com/${REPO}/refs/tags/${INSTALLER_VERSION}/dist/manage.py" -o $TMP
-	if [ $? -ne 0 ]; then
+	local SRC=""
+
+	if [[ "$INSTALLER_VERSION" == *"~DEV"* ]]; then
+		# Development version, pull from dev branch
+		SRC="https://raw.githubusercontent.com/${REPO}/refs/heads/dev/dist/manage.py"
+	else
+		# Stable version, pull from tagged release
+		SRC="https://raw.githubusercontent.com/${REPO}/refs/tags/${INSTALLER_VERSION}/dist/manage.py"
+	fi
+
+	if ! download "$SRC" $TMP; then
 		echo "Could not download management script!" >&2
-		return
+		exit 1
 	fi
 
 	mv $TMP "$GAME_DIR/manage.py"
@@ -710,16 +812,41 @@ function install_management() {
 	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install ...
 }
 
-############################################
-## Argument Parsing
-############################################
+function uninstall_vein() {
+	systemctl disable $GAME_SERVICE
+	systemctl stop $GAME_SERVICE
 
-# Default to install mode
-OPT_MODE_INSTALL=1
+	# Save directory, (usually outside of GAME_DIR)
+	[ -n "$SAVE_DIR" -a -d "$SAVE_DIR" ] && rm -fr "$SAVE_DIR"
+
+	# Symlinks
+	[ -h "$GAME_DIR/Game.ini" ] && unlink "$GAME_DIR/Game.ini"
+	[ -h "$GAME_DIR/GameUserSettings.ini" ] && unlink "$GAME_DIR/GameUserSettings.ini"
+	[ -h "$GAME_DIR/SaveGames" ] && unlink "$GAME_DIR/SaveGames"
+	[ -h "$GAME_DIR/Vein.log" ] && unlink "$GAME_DIR/Vein.log"
+
+	# Service files
+	[ -e "/etc/systemd/system/${GAME_SERVICE}.service" ] && rm "/etc/systemd/system/${GAME_SERVICE}.service"
+
+	# Game files
+	[ -d "$GAME_DIR" ] && rm -rf "$GAME_DIR/AppFiles"
+
+	# Management scripts
+	[ -e "$GAME_DIR/manage.py" ] && rm "$GAME_DIR/manage.py"
+	[ -d "$GAME_DIR/.venv" ] && rm -rf "$GAME_DIR/.venv"
+}
 
 ############################################
 ## Pre-exec Checks
 ############################################
+
+if [ $OPT_MODE_UNINSTALL -eq 1 ]; then
+	MODE="uninstall"
+else
+	# Default to install mode
+	MODE="install"
+fi
+
 
 if systemctl -q is-active $GAME_SERVICE; then
 	echo "$GAME_DESC service is currently running, please stop it before running this installer."
@@ -727,7 +854,30 @@ if systemctl -q is-active $GAME_SERVICE; then
 	exit 1
 fi
 
-if [ -e "$GAME_DIR/AppFiles/VeinServer.sh" ]; then
+if [ -n "$OPT_OVERRIDE_DIR" ]; then
+	# User requested to change the install dir!
+	# This changes the GAME_DIR from the default location to wherever the user requested.
+	if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
+    	# Check for existing installation directory based on service file
+    	GAME_DIR="$(egrep '^WorkingDirectory' "/etc/systemd/system/${GAME_SERVICE}.service" | sed 's:.*=\(.*\)/AppFiles.*:\1:')"
+    	if [ "$GAME_DIR" != "$OPT_OVERRIDE_DIR" ]; then
+    		echo "ERROR: $GAME_DESC already installed in $GAME_DIR, cannot override to $OPT_OVERRIDE_DIR" >&2
+    		echo "If you want to move the installation, please uninstall first and then re-install to the new location." >&2
+    		exit 1
+		fi
+	fi
+
+	GAME_DIR="$OPT_OVERRIDE_DIR"
+	echo "Using ${GAME_DIR} as the installation directory based on explicit argument"
+elif [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
+	# Check for existing installation directory based on service file
+	GAME_DIR="$(egrep '^WorkingDirectory' "/etc/systemd/system/${GAME_SERVICE}.service" | sed 's:.*=\(.*\)/AppFiles.*:\1:')"
+	echo "Detected installation directory of ${GAME_DIR} based on service registration"
+else
+	echo "Using default installation directory of ${GAME_DIR}"
+fi
+
+if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
 	EXISTING=1
 else
 	EXISTING=0
@@ -735,7 +885,7 @@ fi
 
 if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
 	if egrep -q '^ExecStartPre=.*-beta ' "/etc/systemd/system/${GAME_SERVICE}.service"; then
-		BETA="$(egrep '^ExecStartPre=.*-beta ' /etc/systemd/system/vein-server.service | sed 's:.*-beta \([^ ]*\) .*:\1:')"
+		BETA="$(egrep '^ExecStartPre=.*-beta ' "/etc/systemd/system/${GAME_SERVICE}.service" | sed 's:.*-beta \([^ ]*\) .*:\1:')"
 	else
 		BETA=""
 	fi
@@ -747,23 +897,22 @@ fi
 ## Installer
 ############################################
 
-print_header "$GAME_DESC *unofficial* Installer ${INSTALLER_VERSION}"
 
-if [ $OPT_MODE_INSTALL -eq 1 ]; then
+if [ "$MODE" == "install" ]; then
 
-	if [ $EXISTING -eq 0 ]; then
-		FIREWALL="$(prompt_yn --default-yes "Install system firewall?")"
+	if [ $EXISTING -eq 0 ] && prompt_yn -q --default-yes "Install system firewall?"; then
+		FIREWALL=1
 	else
 		FIREWALL=0
 	fi
 
 	if [ -n "$BETA" ]; then
 		echo "Using beta branch $BETA"
-		if [ "$(prompt_yn --default-no "Switch to stable branch?")" == "1" ]; then
+		if prompt_yn -q --default-no "Switch to stable branch?"; then
 			BETA=""
 		fi
 	else
-		if [ "$(prompt_yn --default-no "Install experimental branch?")" == "1" ]; then
+		if prompt_yn -q --default-no "Install experimental branch?"; then
 			BETA="experimental"
 		fi
 	fi
@@ -791,3 +940,16 @@ if [ $OPT_MODE_INSTALL -eq 1 ]; then
     echo "sudo $GAME_DIR/manage.py"
 fi
 
+if [ "$MODE" == "uninstall" ]; then
+	if prompt_yn -q --invert --default-no "This will remove all game binary content"; then
+		exit 1
+	fi
+	if prompt_yn -q --invert --default-no "This will remove all player and map data"; then
+		exit 1
+	fi
+	if prompt_yn -q --default-yes "Perform a backup before everything is wiped?"; then
+		$GAME_DIR/manage.py --backup
+	fi
+
+	uninstall_vein
+fi

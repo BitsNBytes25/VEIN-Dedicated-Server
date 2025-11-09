@@ -8,7 +8,9 @@
         "submittedBy": "Charlie Powell <cdp1337@bitsnbytes.dev>",
         "name": "Install VEIN Server",
         "syntax": [
-            "--install  - Perform an installation (default if no options given)"
+            "--install  - Perform an installation (default if no options given)",
+            "--uninstall  - Perform an uninstallation",
+            "--dir=<path> - Use a custom installation directory instead of the default (optional)"
         ],
         "default_timeout": "600",
         "shell": "shell",

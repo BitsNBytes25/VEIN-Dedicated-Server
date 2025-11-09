@@ -17,7 +17,7 @@ ExecStartPre=/usr/games/steamcmd +force_install_dir $GAME_DIR/AppFiles +login an
 ExecStart=$GAME_DIR/AppFiles/VeinServer.sh -log
 #ExecStop=$GAME_DIR/manage.py --pre-stop
 Restart=on-failure
-RestartSec=20s
+RestartSec=1800s
 TimeoutStartSec=600s
 
 [Install]
