@@ -10,6 +10,10 @@
 # @AUTHOR  Charlie Powell <cdp1337@bitsnbytes.dev>
 # @CATEGORY Game Server
 # @TRMM-TIMEOUT 600
+# @WARLOCK-TITLE VEIN
+# @WARLOCK-IMAGE https://files.eval.bz/warlock/vein-1280x720.jpg
+# @WARLOCK-ICON https://files.eval.bz/warlock/vein-128x128.png
+# @WARLOCK-THUMBNAIL https://files.eval.bz/warlock/vein_616x353.jpg
 #
 # Supports:
 #   Debian 12, 13
@@ -22,9 +26,11 @@
 #   None
 #
 # Syntax:
-#   OPT_MODE_INSTALL=--install - Perform an installation (default if no options given)
-#   OPT_MODE_UNINSTALL=--uninstall - Perform an uninstallation
-#   OPT_OVERRIDE_DIR=--dir=<path> - Use a custom installation directory instead of the default (optional)
+#   MODE_UNINSTALL=--uninstall - Perform an uninstallation
+#   OVERRIDE_DIR=--dir=<path> - Use a custom installation directory instead of the default (optional)
+#   SKIP_FIREWALL=--skip-firewall - Do not install or configure a system firewall
+#   USE_BRANCH=--branch=<stable|experimental> - Install a different branch from Steam (optional)
+#   NONINTERACTIVE=--non-interactive - Run the installer in non-interactive mode (useful for scripted installs)
 #
 # Changelog:
 #   20251103 - New installer
@@ -34,10 +40,11 @@
 ############################################
 
 # Name of the game (used to create the directory)
-INSTALLER_VERSION="v20251109~DEV"
+INSTALLER_VERSION="v20251120~DEV"
 GAME="VEIN"
 GAME_DESC="VEIN Dedicated Server"
 REPO="BitsNBytes25/VEIN-Dedicated-Server"
+WARLOCK_GUID="acdf1bec-2906-c20f-5a59-b0df072c29e8"
 # Steam ID of the game
 STEAM_ID="2131400"
 GAME_USER="steam"
@@ -81,7 +88,7 @@ print_header "$GAME_DESC *unofficial* Installer ${INSTALLER_VERSION}"
 #   GAME_SERVICE - Service name to install with Systemd
 #   SAVE_DIR     - Directory to store game save files
 #
-function install_vein() {
+function install_application() {
 	# Create a "steam" user account
 	# This will create the account with no password, so if you need to log in with this user,
 	# run `sudo passwd steam` to set a password.
@@ -139,11 +146,23 @@ EOF
 	[ -h "$GAME_DIR/SaveGames" ] || sudo -u $GAME_USER ln -s "$SAVE_DIR" "$GAME_DIR/SaveGames"
 	[ -h "$GAME_DIR/Vein.log" ] || \
 		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/Logs/Vein.log" "$GAME_DIR/Vein.log"
+
+	if [ -n "$WARLOCK_GUID" ]; then
+		# Register Warlock
+		[ -d "/var/lib/warlock" ] || mkdir -p "/var/lib/warlock"
+		echo -n "$GAME_DIR" > "/var/lib/warlock/${WARLOCK_GUID}.app"
+	fi
 }
 
+##
+# Install the management script from the project's repo
+#
+# Expects the following variables:
+#   GAME_USER    - User account to install the game under
+#   GAME_DIR     - Directory to install the game into
+#
 function install_management() {
 	# Install management console and its dependencies
-	local TMP=$(mktemp)
 	local SRC=""
 
 	if [[ "$INSTALLER_VERSION" == *"~DEV"* ]]; then
@@ -154,12 +173,11 @@ function install_management() {
 		SRC="https://raw.githubusercontent.com/${REPO}/refs/tags/${INSTALLER_VERSION}/dist/manage.py"
 	fi
 
-	if ! download "$SRC" $TMP; then
+	if ! download "$SRC" "$GAME_DIR/manage.py"; then
 		echo "Could not download management script!" >&2
 		exit 1
 	fi
 
-	mv $TMP "$GAME_DIR/manage.py"
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/manage.py"
 	chmod +x "$GAME_DIR/manage.py"
 
@@ -169,7 +187,15 @@ function install_management() {
 	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install ...
 }
 
-function uninstall_vein() {
+##
+# Uninstall the VEIN game server
+#
+# Expects the following variables:
+#   GAME_DIR     - Directory where the game is installed
+#   GAME_SERVICE - Service name used with Systemd
+#   SAVE_DIR     - Directory where game save files are stored
+#
+function uninstall_application() {
 	systemctl disable $GAME_SERVICE
 	systemctl stop $GAME_SERVICE
 
@@ -191,13 +217,18 @@ function uninstall_vein() {
 	# Management scripts
 	[ -e "$GAME_DIR/manage.py" ] && rm "$GAME_DIR/manage.py"
 	[ -d "$GAME_DIR/.venv" ] && rm -rf "$GAME_DIR/.venv"
+
+	if [ -n "$WARLOCK_GUID" ]; then
+		# unregister Warlock
+		[ -e "/var/lib/warlock/${WARLOCK_GUID}.app" ] && rm "/var/lib/warlock/${WARLOCK_GUID}.app"
+	fi
 }
 
 ############################################
 ## Pre-exec Checks
 ############################################
 
-if [ $OPT_MODE_UNINSTALL -eq 1 ]; then
+if [ $MODE_UNINSTALL -eq 1 ]; then
 	MODE="uninstall"
 else
 	# Default to install mode
@@ -211,20 +242,20 @@ if systemctl -q is-active $GAME_SERVICE; then
 	exit 1
 fi
 
-if [ -n "$OPT_OVERRIDE_DIR" ]; then
+if [ -n "$OVERRIDE_DIR" ]; then
 	# User requested to change the install dir!
 	# This changes the GAME_DIR from the default location to wherever the user requested.
 	if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
     	# Check for existing installation directory based on service file
     	GAME_DIR="$(egrep '^WorkingDirectory' "/etc/systemd/system/${GAME_SERVICE}.service" | sed 's:.*=\(.*\)/AppFiles.*:\1:')"
-    	if [ "$GAME_DIR" != "$OPT_OVERRIDE_DIR" ]; then
-    		echo "ERROR: $GAME_DESC already installed in $GAME_DIR, cannot override to $OPT_OVERRIDE_DIR" >&2
+    	if [ "$GAME_DIR" != "$OVERRIDE_DIR" ]; then
+    		echo "ERROR: $GAME_DESC already installed in $GAME_DIR, cannot override to $OVERRIDE_DIR" >&2
     		echo "If you want to move the installation, please uninstall first and then re-install to the new location." >&2
     		exit 1
 		fi
 	fi
 
-	GAME_DIR="$OPT_OVERRIDE_DIR"
+	GAME_DIR="$OVERRIDE_DIR"
 	echo "Using ${GAME_DIR} as the installation directory based on explicit argument"
 elif [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
 	# Check for existing installation directory based on service file
@@ -257,13 +288,22 @@ fi
 
 if [ "$MODE" == "install" ]; then
 
-	if [ $EXISTING -eq 0 ] && prompt_yn -q --default-yes "Install system firewall?"; then
+	if [ $SKIP_FIREWALL -eq 1 ]; then
+		FIREWALL=0
+	elif [ $EXISTING -eq 0 ] && prompt_yn -q --default-yes "Install system firewall?"; then
 		FIREWALL=1
 	else
 		FIREWALL=0
 	fi
 
-	if [ -n "$BETA" ]; then
+	if [ -n "$USE_BRANCH" ]; then
+		# User requested a specific branch
+		if [ "$USE_BRANCH" == "stable" ]; then
+			BETA=""
+		else
+			BETA="$USE_BRANCH"
+		fi
+	elif [ -n "$BETA" ]; then
 		echo "Using beta branch $BETA"
 		if prompt_yn -q --default-no "Switch to stable branch?"; then
 			BETA=""
@@ -280,7 +320,7 @@ if [ "$MODE" == "install" ]; then
 		STEAMBETABRANCH=""
 	fi
 
-	install_vein
+	install_application
 
 	install_management
 
@@ -298,15 +338,18 @@ if [ "$MODE" == "install" ]; then
 fi
 
 if [ "$MODE" == "uninstall" ]; then
-	if prompt_yn -q --invert --default-no "This will remove all game binary content"; then
-		exit 1
+	if [ $NONINTERACTIVE -eq 0 ]; then
+		if prompt_yn -q --invert --default-no "This will remove all game binary content"; then
+			exit 1
+		fi
+		if prompt_yn -q --invert --default-no "This will remove all player and map data"; then
+			exit 1
+		fi
 	fi
-	if prompt_yn -q --invert --default-no "This will remove all player and map data"; then
-		exit 1
-	fi
+
 	if prompt_yn -q --default-yes "Perform a backup before everything is wiped?"; then
 		$GAME_DIR/manage.py --backup
 	fi
 
-	uninstall_vein
+	uninstall_application
 fi

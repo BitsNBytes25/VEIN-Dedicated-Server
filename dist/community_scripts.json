@@ -1,16 +1,18 @@
 [
     {
         "$schema": "https://raw.githubusercontent.com/amidaware/community-scripts/main/community_scripts.schema.json",
-        "guid": "117fbe66-48ba-38ee-b153-ce997613c857",
+        "guid": "acdf1bec-2906-c20f-5a59-b0df072c29e8",
         "filename": "installer.sh",
         "args": [],
         "env": [],
         "submittedBy": "Charlie Powell <cdp1337@bitsnbytes.dev>",
         "name": "Install VEIN Server",
         "syntax": [
-            "--install  - Perform an installation (default if no options given)",
             "--uninstall  - Perform an uninstallation",
-            "--dir=<path> - Use a custom installation directory instead of the default (optional)"
+            "--dir=<path> - Use a custom installation directory instead of the default (optional)",
+            "--skip-firewall  - Do not install or configure a system firewall",
+            "--branch=<stable|experimental> - Install a different branch from Steam (optional)",
+            "--non-interactive  - Run the installer in non-interactive mode (useful for scripted installs)"
         ],
         "default_timeout": "600",
         "shell": "shell",
