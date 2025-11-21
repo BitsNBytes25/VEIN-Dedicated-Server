@@ -15,6 +15,9 @@ from scriptlets.bz_eval_tui.table import *
 from scriptlets.bz_eval_tui.print_header import *
 from scriptlets._common.get_wan_ip import *
 from scriptlets.com_unrealengine.config_parser import *
+from scriptlets.steam.steamcmd_check_app_update import *
+# import:org_python/venv_path_include.py
+import yaml
 
 
 here = os.path.dirname(os.path.realpath(__file__))
@@ -64,9 +67,10 @@ def format_seconds(seconds: int) -> dict:
 		'short': short
 	}
 
+
 class ManagerConfig:
 	"""
-	Configuration for the management script itself
+	Configuration for the management script
 
 	Handles admin-defined settings like player messages and the like.
 	"""
@@ -190,121 +194,151 @@ class ManagerConfig:
 class GameAPIException(Exception):
 	pass
 
-class GameConfig:
 
-	"""
-	Configuration file reader for the game server
-	"""
-	def __init__(self):
+class GameConfig:
+	def __init__(self, path):
+		self.path = path
+		self.parser = UnrealConfigParser()
+		self.options = {}
+
+	def add_option(self, name, section, key, default, type, help):
+		self.options[name] = (section, key, default, type, help)
+
+	def _convert_to_system_type(self, value: str, type: str) -> Union[str, int, bool]:
+		# Auto convert
+		if value == '':
+			return ''
+		elif type == 'int':
+			return int(value)
+		elif type == 'bool':
+			return value.lower() in ('1', 'true', 'yes', 'on')
+		else:
+			return value
+
+	def get_value(self, name: str) -> Union[str, int, bool]:
+		if name not in self.options:
+			print('Invalid option: %s, not present in %s configuration!' % (name, os.path.basename(self.path)), file=sys.stderr)
+			return ''
+
+		section = self.options[name][0]
+		key = self.options[name][1]
+		default = self.options[name][2]
+		type = self.options[name][3]
+		val = self.parser.get_key(section, key, default)
+
+		return self._convert_to_system_type(val, type)
+
+	def set_value(self, name: str, value: Union[str, int, bool]):
+		if name not in self.options:
+			print('Invalid option: %s, not present in %s configuration!' % (name, os.path.basename(self.path)), file=sys.stderr)
+			return
+
+		section = self.options[name][0]
+		key = self.options[name][1]
+		type = self.options[name][3]
+
+		# Convert to string for storage
+		if type == 'bool':
+			if value == '':
+				# Allow empty values to defer to default
+				str_value = ''
+			elif value:
+				str_value = 'True'
+			else:
+				str_value = 'False'
+		else:
+			str_value = str(value)
+
+		self.parser.set_key(section, key, str_value)
+
+	def get_default(self, name: str) -> Union[str, int, bool]:
+		if name not in self.options:
+			print('Invalid option: %s, not present in %s configuration!' % (name, os.path.basename(self.path)), file=sys.stderr)
+			return ''
+
+		default = self.options[name][2]
+		type = self.options[name][3]
+
+		return self._convert_to_system_type(default, type)
+
+	def get_type(self, name: str) -> str:
+		if name not in self.options:
+			print('Invalid option: %s, not present in %s configuration!' % (name, os.path.basename(self.path)), file=sys.stderr)
+			return ''
+
+		return self.options[name][3]
+
+	def exists(self) -> bool:
 		"""
-		Initialize the configuration file reader
-		:param file:
+		Check if the config file exists on disk
+		:return:
 		"""
-		self.configs = {
-			'game': {
-				'path': os.path.join(here, 'AppFiles/Vein/Saved/Config/LinuxServer/Game.ini'),
-				'parser': None,
-			},
-			'gus': {
-				'path': os.path.join(here, 'AppFiles/Vein/Saved/Config/LinuxServer/GameUserSettings.ini'),
-				'parser': None,
-			},
-			'engine': {
-				'path': os.path.join(here, 'AppFiles/Vein/Saved/Config/LinuxServer/Engine.ini'),
-				'parser': None,
-			},
-		}
-		self.configured = False
-		self.load()
-		self.options = {
-			'AISpawner': (
-				'engine',
-				'ConsoleVariables',
-				'vein.AISpawner.Enabled',
-				'True',
-				'bool'
-			),
-			'APIPort': (
-				'game',
-				'/Script/Vein.VeinGameSession',
-				'HTTPPort',
-				'',
-				'str'
-			),
-			'Public': (
-				'game',
-				'/Script/Vein.VeinGameSession',
-				'bPublic',
-				'True',
-				'bool'
-			),
-			'GamePort': (
-				'game',
-				'URL',
-				'Port',
-				'7777',
-				'str'
-			),
-			'MaxPlayers': (
-				'game',
-				'/Script/Engine.GameSession',
-				'MaxPlayers',
-				'16',
-				'str'
-			),
-			'PVPEnabled': (
-				'engine',
-				'ConsoleVariables',
-				'vein.PvP',
-				'True',
-				'bool'
-			),
-			'ServerDescription': (
-				'game',
-				'/Script/Vein.VeinGameSession',
-				'ServerDescription',
-				'Short description of your server and your community',
-				'str'
-			),
-			'ServerName': (
-				'game',
-				'/Script/Vein.VeinGameSession',
-				'ServerName',
-				'My Vein Server',
-				'str'
-			),
-			'ServerPassword': (
-				'game',
-				'/Script/Vein.VeinGameSession',
-				'Password',
-				'',
-				'str'
-			),
-			'SteamQueryPort': (
-				'game',
-				'OnlineSubsystemSteam',
-				'GameServerQueryPort',
-				'27015',
-				'str'
-			),
-			'VACEnabled': (
-				'game',
-				'OnlineSubsystemSteam',
-				'bVACEnabled',
-				'False',
-				'bool'
-			),
-		}
+		return os.path.exists(self.path)
 
 	def load(self):
 		"""
-		Load the configuration file
+		Load the configuration file from disk
 		:return:
 		"""
-		for cfg in self.configs:
-			self.configs[cfg]['parser'] = UnrealConfigParser()
-			if os.path.exists(self.configs[cfg]['path']):
-				self.configs[cfg]['parser'].read_file(self.configs[cfg]['path'])
+		if os.path.exists(self.path):
+			self.parser.read_file(self.path)
+
+	def save(self):
+		"""
+		Save the configuration file back to disk
+		:return:
+		"""
+		if self.parser.is_changed():
+			self.parser.write_file(self.path)
+			if IS_SUDO:
+				subprocess.run(['chown', '%s:%s' % (GAME_USER, GAME_USER), self.path])
+
+
+class GameApp:
+	"""
+	Game application manager
+	"""
+
+	def __init__(self):
+		self.name = 'VEIN'
+		self.desc = 'VEIN Dedicated Server'
+		self.steam_id = '2131400'
+		self.services = ('vein-server',)
+		self._svcs = None
+
+		self.configs = {
+			'game': GameConfig(os.path.join(here, 'AppFiles/Vein/Saved/Config/LinuxServer/Game.ini')),
+			'gus': GameConfig(os.path.join(here, 'AppFiles/Vein/Saved/Config/LinuxServer/GameUserSettings.ini')),
+			'engine': GameConfig(os.path.join(here, 'AppFiles/Vein/Saved/Config/LinuxServer/Engine.ini'))
+		}
+
+		# Load the configuration definitions from configs.yaml
+		if os.path.exists(os.path.join(here, 'configs.yaml')):
+			with open(os.path.join(here, 'configs.yaml'), 'r') as cfgfile:
+				cfgdata = yaml.safe_load(cfgfile)
+				for cfgname, cfgoptions in cfgdata.items():
+					if cfgname in self.configs:
+						for option in cfgoptions:
+							self.configs[cfgname].add_option(
+								option['name'],
+								option['section'],
+								option['key'],
+								option['default'],
+								option['type'],
+								option['help']
+							)
+
+		self.configured = False
+		self.load()
+
+	def load(self):
+		"""
+		Load the configuration files
+		:return:
+		"""
+		for config in self.configs.values():
+			if config.exists():
+				config.load()
 				self.configured = True
 
 	def save(self):
@@ -312,96 +346,148 @@ class GameConfig:
 		Save the configuration files back to disk
 		:return:
 		"""
-		for cfg in self.configs:
-			if self.configs[cfg]['parser'].is_changed():
-				self.configs[cfg]['parser'].write_file(self.configs[cfg]['path'])
-				if IS_SUDO:
-					subprocess.run(['chown', '%s:%s' % (GAME_USER, GAME_USER), self.configs[cfg]['path']])
+		for config in self.configs.values():
+			config.save()
 
-	def _get_config_source(self, option: str) -> Union[UnrealConfigParser, None]:
-		source = self.options[option][0]
-		if source not in self.configs:
-			print('Invalid source for option: %s' % option, file=sys.stderr)
-			return None
+	def get_options(self) -> list:
+		"""
+		Get a list of available configuration options for this game
+		:return:
+		"""
+		opts = []
+		for config in self.configs.values():
+			opts.extend(list(config.options.keys()))
 
-		return self.configs[source]['parser']
+		# Sort alphabetically
+		opts.sort()
 
-	def prompt_option(self, option: str, title: str = None) -> str:
+		return opts
 
-		if option not in self.options:
-			print('Invalid option: %s, not present in game configuration!' % option, file=sys.stderr)
-			return ''
+	def get_option_value(self, option: str) -> Union[str, int, bool]:
+		"""
+		Get a configuration option from the game config
+		:param option:
+		:return:
+		"""
+		for config in self.configs.values():
+			if option in config.options:
+				return config.get_value(option)
 
-		if title is None:
-			title = option + ': '
+		print('Invalid option: %s, not present in game configuration!' % option, file=sys.stderr)
+		return ''
 
-		config = self._get_config_source(option)
-		section = self.options[option][1]
-		key = self.options[option][2]
-		val_type = self.options[option][4]
+	def get_option_default(self, option: str) -> str:
+		"""
+		Get the default value of a configuration option
+		:param option:
+		:return:
+		"""
+		for config in self.configs.values():
+			if option in config.options:
+				return config.get_default(option)
 
-		# Set the default to the current value if present
-		default = config.get_key(section, key, self.options[option][3])
+		print('Invalid option: %s, not present in game configuration!' % option, file=sys.stderr)
+		return ''
 
-		if val_type == 'bool':
-			default = 'y' if default.lower() in ['true', '1', 'yes'] else 'n'
-			val = 'True' if prompt_yn(title, default) else 'False'
-		else:
-			val = prompt_text(title, default=default, prefill=True)
+	def get_option_type(self, option: str) -> str:
+		"""
+		Get the type of a configuration option from the game config
+		:param option:
+		:return:
+		"""
+		for config in self.configs.values():
+			if option in config.options:
+				return config.get_type(option)
 
-		self.set_option(option, val)
-		return val
+		print('Invalid option: %s, not present in game configuration!' % option, file=sys.stderr)
+		return ''
 
-	def get_option(self, option: str) -> str:
-		if option not in self.options:
-			print('Invalid option: %s, not present in game configuration!' % option, file=sys.stderr)
-			return ''
+	def get_option_help(self, option: str) -> str:
+		"""
+		Get the help text of a configuration option from the game config
+		:param option:
+		:return:
+		"""
+		for config in self.configs.values():
+			if option in config.options:
+				return config.options[option][4]
 
-		config = self._get_config_source(option)
-		section = self.options[option][1]
-		key = self.options[option][2]
-		return config.get_key(section, key, self.options[option][3])
+		print('Invalid option: %s, not present in game configuration!' % option, file=sys.stderr)
+		return ''
 
 	def set_option(self, option: str, value: str):
-		if option not in self.options:
-			print('Invalid option: %s, not present in game configuration!' % option, file=sys.stderr)
-			return
+		"""
+		Set a configuration option in the game config
+		:param option:
+		:param value:
+		:return:
+		"""
+		for config in self.configs.values():
+			if option in config.options:
+				previous_value = config.get_value(option)
+				config.set_value(option, value)
+				config.save()
 
-		config = self._get_config_source(option)
-		section = self.options[option][1]
-		key = self.options[option][2]
-		previous_value = config.get_key(section, key, '')
-		config.set_key(section, key, value)
+				# Special option actions
+				if option == 'GamePort':
+					# Update firewall for game port change
+					if previous_value and previous_value != value:
+						firewall_remove(int(previous_value), 'udp')
+					if previous_value != value:
+						firewall_allow(int(value), 'udp', 'Allow %s game port from anywhere' % self.desc)
+				elif option == 'SteamQueryPort':
+					# Update firewall for game port change
+					if previous_value and previous_value != value:
+						firewall_remove(int(previous_value), 'udp')
+					if previous_value != value:
+						firewall_allow(int(value), 'udp', 'Allow %s Steam query port from anywhere' % self.desc)
 
-		# Special option actions
-		if option == 'GamePort':
-			# Update firewall for game port change
-			if previous_value and previous_value != value:
-				firewall_remove(int(previous_value), 'udp')
-			if previous_value != value:
-				firewall_allow(int(value), 'udp', 'Allow %s game port from anywhere' % GAME_DESC)
-		elif option == 'SteamQueryPort':
-			# Update firewall for game port change
-			if previous_value and previous_value != value:
-				firewall_remove(int(previous_value), 'udp')
-			if previous_value != value:
-				firewall_allow(int(value), 'udp', 'Allow %s Steam query port from anywhere' % GAME_DESC)
+				return
 
-		# Save the config change
-		self.save()
+		print('Invalid option: %s, not present in game configuration!' % option, file=sys.stderr)
+
+	def check_update_available(self) -> bool:
+		"""
+		Check if a SteamCMD update is available for this game
+
+		:return:
+		"""
+		return steamcmd_check_app_update(os.path.join(here, 'AppFiles', 'steamapps', 'appmanifest_%s.acf' % STEAM_ID))
+
+	def get_services(self) -> dict:
+		"""
+		Get a dictionary of available services (instances) for this game
+
+		:return:
+		"""
+		if self._svcs is None:
+			self._svcs = {}
+			for svc in self.services:
+				self._svcs[svc] = GameService(svc, self)
+		return self._svcs
+
+	def is_active(self) -> bool:
+		"""
+		Check if any service instance is currently running or starting
+		:return:
+		"""
+		for svc in self.get_services().values():
+			if svc.is_running() or svc.is_starting() or svc.is_stopping():
+				return True
+		return False
 
 
 class GameService:
 	"""
 	Service definition and handler
 	"""
-	def __init__(self):
+	def __init__(self, service: str, game: GameApp):
 		"""
 		Initialize and load the service definition
 		:param file:
 		"""
-		self.config = GameConfig()
-		self.service = GAME_SERVICE
+		self.service = service
+		self.game = game
 
 	def _api_cmd(self, cmd: str, method: str = 'GET', data: dict = None):
 		method = method.upper()
@@ -418,7 +504,7 @@ class GameService:
 			raise GameAPIException('API not enabled')
 
 		req = request.Request(
-			'http://127.0.0.1:%s%s' % (self.config.get_option('APIPort'), cmd),
+			'http://127.0.0.1:%s%s' % (self.game.get_option_value('APIPort'), cmd),
 			headers={
 				'Content-Type': 'application/json; charset=utf-8',
 				'Accept': 'application/json',
@@ -450,7 +536,7 @@ class GameService:
 			raise GameAPIException('Connection refused')
 
 	def is_api_enabled(self) -> bool:
-		return self.config.get_option('APIPort') != ''
+		return self.game.get_option_value('APIPort') != ''
 
 	def get_players(self) -> Union[list, None]:
 		"""
@@ -598,6 +684,114 @@ class GameService:
 		else:
 			return 'N/A'
 
+	def get_exec_start_status(self) -> Union[dict, None]:
+		"""
+		Get the ExecStart status of the service
+		This includes:
+
+		* path - string: Path of the ExecStartPre command
+		* arguments - string: Arguments passed to the ExecStartPre command
+		* start_time - datetime: Time the ExecStartPre command started
+		* stop_time - datetime: Time the ExecStartPre command stopped
+		* pid - int: PID of the ExecStartPre command
+		* code - string: Exit code of the ExecStartPre command
+		* status - int: Exit status of the ExecStartPre command
+		* runtime - int: Runtime of the ExecStartPre command in seconds
+
+		:return:
+		"""
+		return self._get_exec_status('ExecStart')
+
+	def get_exec_start_pre_status(self) -> Union[dict, None]:
+		"""
+		Get the ExecStart status of the service
+		This includes:
+
+		* path - string: Path of the ExecStartPre command
+		* arguments - string: Arguments passed to the ExecStartPre command
+		* start_time - datetime: Time the ExecStartPre command started
+		* stop_time - datetime: Time the ExecStartPre command stopped
+		* pid - int: PID of the ExecStartPre command
+		* code - string: Exit code of the ExecStartPre command
+		* status - int: Exit status of the ExecStartPre command
+		* runtime - int: Runtime of the ExecStartPre command in seconds
+
+		:return:
+		"""
+		return self._get_exec_status('ExecStartPre')
+
+
+	def _get_exec_status(self, lookup: str) -> Union[dict, None]:
+		"""
+		Get the ExecStartPre status of the service
+		This includes:
+
+		* path - string: Path of the ExecStartPre command
+		* arguments - string: Arguments passed to the ExecStartPre command
+		* start_time - datetime: Time the ExecStartPre command started
+		* stop_time - datetime: Time the ExecStartPre command stopped
+		* pid - int: PID of the ExecStartPre command
+		* code - string: Exit code of the ExecStartPre command
+		* status - int: Exit status of the ExecStartPre command
+		* runtime - int: Runtime of the ExecStartPre command in seconds
+
+		:return:
+		"""
+
+		# ExecStartPre={ path=/usr/games/steamcmd ; argv[]=/usr/games/steamcmd +force_install_dir /home/steam/VEIN/AppFiles +login anonymous +app_update 2131400 -beta experimental validate +quit ; ignore_errors=no ; start_time=[Sat 2025-11-15 22:53:36 EST] ; stop_time=[Sat 2025-11-15 22:53:42 EST] ; pid=1379560 ; code=exited ; status=8 }
+		output = subprocess.run([
+			'systemctl', 'show', '-p', lookup, self.service
+		], stdout=subprocess.PIPE).stdout.decode().strip()[len(lookup)+1:]
+		if output == '':
+			return None
+
+		output = output[1:-1]  # Remove surrounding {}
+		parts = output.split(' ; ')
+		result = {}
+		for part in parts:
+			if '=' not in part:
+				continue
+			key, val = part.split('=', 1)
+			key = key.strip()
+			val = val.strip()
+			if key == 'path':
+				result['path'] = val
+			elif key == 'argv[]':
+				result['arguments'] = val
+			elif key == 'start_time':
+				val = val[1:-1]  # Remove surrounding []
+				if val == 'n/a':
+					result['start_time'] = None
+				else:
+					result['start_time'] = datetime.datetime.strptime(val, '%a %Y-%m-%d %H:%M:%S %Z')
+			elif key == 'stop_time':
+				val = val[1:-1]
+				if val == 'n/a':
+					result['stop_time'] = None
+				else:
+					result['stop_time'] = datetime.datetime.strptime(val, '%a %Y-%m-%d %H:%M:%S %Z')
+			elif key == 'pid':
+				result['pid'] = int(val)
+			elif key == 'code':
+				if val == '(null)':
+					result['code'] = None
+				else:
+					result['code'] = val
+			elif key == 'status':
+				if '/' in val:
+					result['status'] = int(val.split('/')[0])
+				else:
+					result['status'] = int(val)
+
+		if result['start_time'] and result['stop_time']:
+			delta = result['stop_time'] - result['start_time']
+			result['runtime'] = int(delta.total_seconds())
+		else:
+			result['runtime'] = 0
+
+		return result
+
+
 	def send_message(self, message: str):
 		"""
 		Send a message to all players via the game API
@@ -663,7 +857,20 @@ class GameService:
 		Check if this service is currently starting
 		:return:
 		"""
-		return self._is_active() == 'activating'
+		state = self._is_active()
+		if state == 'activating':
+			# Systemd indicates that the service is activating
+			return True
+
+		if state == 'deactivating':
+			# Systemd indicates that the service is DEACTIVATING
+			return False
+
+		if state == 'active' and self.is_api_enabled() and self.get_player_count() is None:
+			# If the API is available but no player data available, it's probably starting.
+			return True
+
+		return False
 
 	def is_stopping(self) -> bool:
 		"""
@@ -878,7 +1085,23 @@ class GameService:
 		self.start()
 
 
-def menu_first_run(game: GameService):
+def prompt_option(game: GameApp, option: str, title: str = None):
+	type = game.get_option_type(option)
+	val = game.get_option_value(option)
+
+	if title is None:
+		title = '%s: ' % option
+
+	if type == 'bool':
+		default = 'y' if val else 'n'
+		val = 'True' if prompt_yn(title, default) else 'False'
+	else:
+		val = prompt_text(title, default=val, prefill=True)
+
+	game.set_option(option, val)
+
+
+def menu_first_run(game: GameApp):
 	"""
 	Display first-run configuration for setting up the game server initially
 
@@ -891,22 +1114,22 @@ def menu_first_run(game: GameService):
 		print('ERROR: Please run this script with sudo to perform first-run configuration.')
 		sys.exit(1)
 
-	game.config.prompt_option('ServerName', 'Enter the server name: ')
-	game.config.prompt_option('ServerDescription')
+	prompt_option(game, 'ServerName', 'Enter the server name: ')
+	prompt_option(game, 'ServerDescription')
 	if prompt_yn('Require a password for players to join?', 'n'):
-		game.config.prompt_option('Password')
-	game.config.prompt_option('GamePort')
-	game.config.prompt_option('SteamQueryPort')
+		prompt_option(game, 'Password')
+	prompt_option(game, 'GamePort')
+	prompt_option(game, 'SteamQueryPort')
 	if prompt_yn('Enable game API (strongly recommended)?', 'y'):
-		game.config.prompt_option('APIPort', 'Enter the game API port, eg 8080: ')
+		prompt_option(game, 'APIPort', 'Enter the game API port, eg 8080: ')
 
 
-def menu_main(game: GameService):
+def menu_service(service: GameService):
 	stay = True
 	wan_ip = get_wan_ip()
 
 	while stay:
-		print_header('Welcome to the %s Manager' % GAME_DESC)
+		print_header('Welcome to the %s Manager' % service.game.desc)
 		if REPO != '':
 			print('Found an issue? https://github.com/%s/issues' % REPO)
 		if FUNDING != '':
@@ -914,41 +1137,41 @@ def menu_main(game: GameService):
 
 		keys = []
 		options = []
-		server_port = game.config.get_option('GamePort')
-		player_pass = game.config.get_option('ServerPassword')
-		api_port = game.config.get_option('APIPort')
+		server_port = service.game.get_option_value('GamePort')
+		player_pass = service.game.get_option_value('ServerPassword')
+		api_port = str(service.game.get_option_value('APIPort'))
 		print('')
 		table = Table()
 		table.borders = False
 		table.align = ['r', 'r', 'l']
 
-		if game.is_starting():
+		if service.is_starting():
 			table.add(['Status', '', ICON_STARTING + ' Starting...'])
-		elif game.is_stopping():
+		elif service.is_stopping():
 			table.add(['Status', '', ICON_STARTING + ' Stopping...'])
-		elif game.is_running():
+		elif service.is_running():
 			table.add(['Status', 's[T]op', ICON_ENABLED + ' Running'])
 			keys.append('T')
 		else:
 			table.add(['Status', '[S]tart', ICON_STOPPED + ' Stopped'])
 			keys.append('S')
 
-		if game.is_enabled():
+		if service.is_enabled():
 			table.add(['Auto-Start', '[D]isable', ICON_ENABLED + ' Enabled'])
 			keys.append('D')
 		else:
 			table.add(['Auto-Start', '[E]nable', ICON_DISABLED + ' Disabled'])
 			keys.append('E')
 
-		if game.is_running():
-			table.add(['Memory Usage', '', game.get_memory_usage()])
-			table.add(['CPU Usage', '', game.get_cpu_usage()])
-			table.add(['Players', '', str(game.get_player_count())])
+		if service.is_running():
+			table.add(['Memory Usage', '', service.get_memory_usage()])
+			table.add(['CPU Usage', '', service.get_cpu_usage()])
+			table.add(['Players', '', str(service.get_player_count())])
 			table.add(['Direct Connect', '', '%s:%s' % (wan_ip, server_port) if wan_ip else 'N/A'])
 
 		table.add(['------', '----', '---------------------'])
 
-		table.add(['Server Name', '(opt %s)' % (len(options) + 1), game.config.get_option('ServerName')])
+		table.add(['Server Name', '(opt %s)' % (len(options) + 1), service.game.get_option_value('ServerName')])
 		options.append(('ServerName', ))
 
 		table.add(['Port', '(opt %s)' % (len(options) + 1), server_port])
@@ -960,16 +1183,16 @@ def menu_main(game: GameService):
 		table.add(['Join Password', '(opt %s)' % (len(options) + 1), player_pass if player_pass != '' else '--No Password Required--'])
 		options.append(('ServerPassword', ))
 
-		table.add(['Max Players', '(opt %s)' % (len(options) + 1), game.config.get_option('MaxPlayers')])
+		table.add(['Max Players', '(opt %s)' % (len(options) + 1), service.game.get_option_value('MaxPlayers')])
 		options.append(('MaxPlayers', ))
 
-		table.add(['Query Port', '(opt %s)' % (len(options) + 1), game.config.get_option('SteamQueryPort')])
+		table.add(['Query Port', '(opt %s)' % (len(options) + 1), service.game.get_option_value('SteamQueryPort')])
 		options.append(('SteamQueryPort', True))
 
-		table.add(['Valve Anti Cheat', '(opt %s)' % (len(options) + 1), game.config.get_option('VACEnabled')])
+		table.add(['Valve Anti Cheat', '(opt %s)' % (len(options) + 1), service.game.get_option_value('VACEnabled')])
 		options.append(('VACEnabled', ))
 
-		table.add(['PVP Enabled', '(opt %s)' % (len(options) + 1), game.config.get_option('PVPEnabled')])
+		table.add(['PVP Enabled', '(opt %s)' % (len(options) + 1), service.game.get_option_value('PVPEnabled')])
 		options.append(('PVPEnabled', ))
 
 		table.render()
@@ -986,16 +1209,16 @@ def menu_main(game: GameService):
 			menu_messages()
 
 		elif opt == 's':
-			game.start()
+			service.start()
 
 		elif opt == 't':
-			game.stop()
+			service.stop()
 
 		elif opt == 'e':
-			game.enable()
+			service.enable()
 
 		elif opt == 'd':
-			game.disable()
+			service.disable()
 
 		elif str.isnumeric(opt) and 1 <= int(opt) <= len(options):
 			action = options[int(opt) - 1]
@@ -1006,27 +1229,26 @@ def menu_main(game: GameService):
 				print('ERROR: This option requires sudo / root privileges.')
 				continue
 
-			game.config.prompt_option(param)
-			game.config.save()
+			prompt_option(service.game, param)
 
 
-def menu_monitor(game: GameService):
+def menu_monitor(service: GameService):
 	"""
 	Monitor the game server status in real time
 
-	:param game:
+	:param service:
 	:return:
 	"""
 
 	try:
 		while True:
-			status = game.get_status()
-			weather = game.get_weather()
+			status = service.get_status()
+			weather = service.get_weather()
 			players = status['onlinePlayers']
 
 			os.system('clear')
 			print_header('Game Server Monitor - Press Ctrl+C to exit')
-			if not game.is_running():
+			if not service.is_running():
 				print('Game is not currently running!')
 				time.sleep(20)
 				continue
@@ -1035,8 +1257,8 @@ def menu_monitor(game: GameService):
 				print('Unable to connect to game API!')
 			else:
 				uptime = format_seconds(status['uptime'])
-				print('Players Online: %s/%s' % (str(len(status['onlinePlayers'])), str(game.config.get_option('MaxPlayers'))))
-				print('Direct Connect: %s:%s' % (get_wan_ip() or 'N/A', game.config.get_option('GamePort')))
+				print('Players Online: %s/%s' % (str(len(status['onlinePlayers'])), str(service.game.get_option_value('MaxPlayers'))))
+				print('Direct Connect: %s:%s' % (get_wan_ip() or 'N/A', service.game.get_option_value('GamePort')))
 				print('Server Uptime:  %s' % uptime['full'])
 
 				if weather is not None:
@@ -1062,7 +1284,7 @@ def menu_monitor(game: GameService):
 		print('\nExiting monitor...')
 
 
-def menu_backup(game: GameService):
+def menu_backup(game: GameApp):
 	"""
 	Backup the game server files
 
@@ -1089,8 +1311,8 @@ def menu_backup(game: GameService):
 			os.makedirs(p)
 
 	# Copy the various configuration files used by the game
-	for cfg in game.config.configs:
-		src = game.config.configs[cfg]['path']
+	for cfg in game.configs.values():
+		src = cfg.path
 		dst = os.path.join(temp_store, 'config', os.path.basename(src))
 		if os.path.exists(src):
 			shutil.copy(src, dst)
@@ -1108,7 +1330,7 @@ def menu_backup(game: GameService):
 
 	# Create the final archive
 	timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-	backup_name = '%s-backup-%s.tar.gz' % (game.service, timestamp)
+	backup_name = '%s-backup-%s.tar.gz' % (game.name, timestamp)
 	backup_path = os.path.join(target_dir, backup_name)
 	shutil.make_archive(backup_path[:-7], 'gztar', temp_store)
 
@@ -1118,7 +1340,7 @@ def menu_backup(game: GameService):
 	sys.exit(0)
 
 
-def menu_restore(game: GameService, path: str):
+def menu_restore(game: GameApp, path: str):
 	"""
 	Restore the game server files
 
@@ -1136,12 +1358,8 @@ def menu_restore(game: GameService, path: str):
 		print('Backup file %s does not exist, cannot continue!' % path, file=sys.stderr)
 		sys.exit(1)
 
-	if game.is_running():
+	if game.is_active():
 		print('Game server is currently running, please stop it before restoring a backup!', file=sys.stderr)
-		sys.exit(1)
-
-	if game.is_starting():
-		print('Game server is currently starting, please stop it before restoring a backup!', file=sys.stderr)
 		sys.exit(1)
 
 	if not os.path.exists(temp_store):
@@ -1151,8 +1369,8 @@ def menu_restore(game: GameService, path: str):
 	shutil.unpack_archive(path, temp_store)
 
 	# Restore the various configuration files used by the game
-	for cfg in game.config.configs:
-		dst = game.config.configs[cfg]['path']
+	for cfg in game.configs.values():
+		dst = cfg.path
 		src = os.path.join(temp_store, 'config', os.path.basename(dst))
 		if os.path.exists(src):
 			shutil.copy(src, dst)
@@ -1173,6 +1391,137 @@ def menu_restore(game: GameService, path: str):
 	shutil.rmtree(temp_store)
 	print('Restored from %s' % path)
 	sys.exit(0)
+
+
+def menu_get_services(game: GameApp):
+	services = game.get_services()
+	stats = {}
+	for svc in services:
+		g = services[svc]
+
+		if g.is_starting():
+			status = 'starting'
+		elif g.is_stopping():
+			status = 'stopping'
+		elif g.is_running():
+			status = 'running'
+		else:
+			status = 'stopped'
+
+		pre_exec = g.get_exec_start_pre_status()
+		start_exec = g.get_exec_start_status()
+		if pre_exec and pre_exec['start_time']:
+			pre_exec['start_time'] = int(pre_exec['start_time'].timestamp())
+		if pre_exec and pre_exec['stop_time']:
+			pre_exec['stop_time'] = int(pre_exec['stop_time'].timestamp())
+		if start_exec and start_exec['start_time']:
+			start_exec['start_time'] = int(start_exec['start_time'].timestamp())
+		if start_exec and start_exec['stop_time']:
+			start_exec['stop_time'] = int(start_exec['stop_time'].timestamp())
+
+		svc_stats = {
+			'service': svc,
+			'name': game.get_option_value('ServerName'),
+			'ip': get_wan_ip(),
+			'port': game.get_option_value('GamePort'),
+			'status': status,
+			'player_count': g.get_player_count(),
+			'max_players': game.get_option_value('MaxPlayers'),
+			'memory_usage': g.get_memory_usage(),
+			'cpu_usage': g.get_cpu_usage(),
+			'game_pid': g.get_game_pid(),
+			'service_pid': g.get_pid(),
+			'pre_exec': pre_exec,
+			'start_exec': start_exec,
+		}
+		stats[svc] = svc_stats
+	print(json.dumps(stats))
+
+
+def menu_check_update(game: GameApp):
+	if game.check_update_available():
+		print('An update is available for %s!' % game.desc)
+		sys.exit(0)
+	else:
+		print('%s is up to date.' % game.desc)
+		sys.exit(1)
+
+def menu_get_game_configs(game: GameApp):
+	"""
+	List the available configuration files for this game (JSON encoded)
+	:param game:
+	:return:
+	"""
+	opts = []
+	# Get global configs
+	for key in ManagerConfig.messages:
+		opts.append({
+			'option': key,
+			'default': ManagerConfig.messages[key]['default'],
+			'value': ManagerConfig.get_message(key),
+			'type': 'str'
+		})
+
+	print(json.dumps(opts))
+	sys.exit(0)
+
+
+def menu_set_game_config(game: GameApp, option: str, value: str):
+	"""
+	Set a configuration option for the game
+	:param game:
+	:param option:
+	:param value:
+	:return:
+	"""
+	for key in ManagerConfig.messages:
+		if option == key:
+			ManagerConfig.set_message(option, value)
+			print('Option %s set to %s' % (option, value))
+			sys.exit(0)
+
+	print('Option not valid', file=sys.stderr)
+	sys.exit(1)
+
+
+def menu_get_service_configs(service: GameService):
+	"""
+	List the available configuration files for this game (JSON encoded)
+	:param game:
+	:param service:
+	:return:
+	"""
+	opts = []
+	# Get per-service configs
+	for opt in service.game.get_options():
+		opts.append({
+			'option': opt,
+			'default': service.game.get_option_default(opt),
+			'value': service.game.get_option_value(opt),
+			'type': service.game.get_option_type(opt),
+			'help': service.game.get_option_help(opt)
+		})
+
+	print(json.dumps(opts))
+	sys.exit(0)
+
+
+def menu_set_service_config(service: GameService, option: str, value: str):
+	"""
+	Set a configuration option for the game
+	:param game:
+	:param service:
+	:param option:
+	:param value:
+	:return:
+	"""
+	if option in service.game.get_options():
+		service.game.set_option(option, value)
+		print('Option %s set to %s' % (option, value))
+		sys.exit(0)
+
+	print('Option not valid', file=sys.stderr)
+	sys.exit(1)
 
 
 def menu_messages():
@@ -1214,6 +1563,12 @@ def menu_messages():
 
 parser = argparse.ArgumentParser('manage.py')
 parser.add_argument(
+	'--service',
+	help='Specify the service instance to manage (default: ALL)',
+	type=str,
+	default='ALL'
+)
+parser.add_argument(
 	'--pre-stop',
 	help='Send notifications to game players and Discord and save the world',
 	action='store_true'
@@ -1226,6 +1581,11 @@ parser.add_argument(
 parser.add_argument(
 	'--start',
 	help='Start the game server',
+	action='store_true'
+)
+parser.add_argument(
+	'--restart',
+	help='Restart the game server',
 	action='store_true'
 )
 parser.add_argument(
@@ -1244,25 +1604,105 @@ parser.add_argument(
 	type=str,
 	default=''
 )
+parser.add_argument(
+	'--check-update',
+	help='Check for game updates via SteamCMD and report the status',
+	action='store_true'
+)
+parser.add_argument(
+	'--get-services',
+	help='List the available service instances for this game (JSON encoded)',
+	action='store_true'
+)
+parser.add_argument(
+	'--get-configs',
+	help='List the available configuration files for this game (JSON encoded)',
+	action='store_true'
+)
+parser.add_argument(
+	'--set-config',
+	help='Set a configuration option for the game',
+	type=str,
+	nargs=2
+)
+parser.add_argument(
+	'--is-running',
+	help='Check if any game service is currently running (exit code 0 = yes, 1 = no)',
+	action='store_true'
+)
+parser.add_argument(
+	'--logs',
+	help='Print the latest logs from the game service',
+	action='store_true'
+)
 args = parser.parse_args()
 
-g = GameService()
+game = GameApp()
+services = game.get_services()
+
+if args.service != 'ALL':
+	# User opted to manage only a single game instance
+	if args.service not in services:
+		print('Service instance %s not found!' % args.service, file=sys.stderr)
+		sys.exit(1)
+	services = {args.service: services[args.service]}
 
 if args.pre_stop:
-	g.pre_stop()
+	for svc in services:
+		g = services[svc]
+		g.pre_stop()
 elif args.stop:
-	g.stop()
+	for svc in services:
+		g = services[svc]
+		g.stop()
 elif args.start:
-	g.start()
+	for svc in services:
+		g = services[svc]
+		g.start()
+elif args.restart:
+	for svc in services:
+		g = services[svc]
+		g.restart()
 elif args.monitor:
+	if len(services) > 1:
+		print('ERROR: --monitor can only be used with a single service instance at a time.', file=sys.stderr)
+		sys.exit(1)
+	g = list(services.values())[0]
 	menu_monitor(g)
+elif args.logs:
+	if len(services) > 1:
+		print('ERROR: --log can only be used with a single service instance at a time.', file=sys.stderr)
+		sys.exit(1)
+	g = list(services.values())[0]
+	g.print_logs()
 elif args.backup:
-	menu_backup(g)
+	menu_backup(game)
 elif args.restore != '':
-	menu_restore(g, args.restore)
+	menu_restore(game, args.restore)
+elif args.check_update:
+	menu_check_update(game)
+elif args.get_services:
+	menu_get_services(game)
+elif args.get_configs:
+	if args.service == 'ALL':
+		menu_get_game_configs(game)
+	else:
+		g = list(services.values())[0]
+		menu_get_service_configs(g)
+elif args.set_config != None:
+	option, value = args.set_config
+	if args.service == 'ALL':
+		menu_set_game_config(game, option, value)
+	else:
+		g = list(services.values())[0]
+		menu_set_service_config(g, option, value)
 else:
 	# Default mode - interactive menu
-	if not g.config.configured:
-		menu_first_run(g)
+	if not game.configured:
+		menu_first_run(game)
 
-	menu_main(g)
+	if len(services) > 1:
+		print('ERROR: This game only supports one instance', file=sys.stderr)
+		sys.exit(1)
+	g = list(services.values())[0]
+	menu_service(g)

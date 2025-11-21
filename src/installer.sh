@@ -181,10 +181,15 @@ function install_management() {
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/manage.py"
 	chmod +x "$GAME_DIR/manage.py"
 
+	# Install configuration definitions
+	cat > "$GAME_DIR/config.yaml" <<EOF
+# script:configs.yaml
+EOF
+
 	# If a pyenv is required:
-	#sudo -u $GAME_USER python3 -m venv "$GAME_DIR/.venv"
-	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install --upgrade pip
-	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install ...
+	sudo -u $GAME_USER python3 -m venv "$GAME_DIR/.venv"
+	sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install --upgrade pip
+	sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install pyyaml
 }
 
 ##
@@ -216,6 +221,7 @@ function uninstall_application() {
 
 	# Management scripts
 	[ -e "$GAME_DIR/manage.py" ] && rm "$GAME_DIR/manage.py"
+	[ -e "$GAME_DIR/configs.yaml" ] && rm "$GAME_DIR/configs.yaml"
 	[ -d "$GAME_DIR/.venv" ] && rm -rf "$GAME_DIR/.venv"
 
 	if [ -n "$WARLOCK_GUID" ]; then

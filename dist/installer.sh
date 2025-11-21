@@ -883,10 +883,82 @@ function install_management() {
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/manage.py"
 	chmod +x "$GAME_DIR/manage.py"
 
+	# Install configuration definitions
+	cat > "$GAME_DIR/config.yaml" <<EOF
+game:
+  - name: APIPort
+    section: "/Script/Vein.VeinGameSession"
+    key: HTTPPort
+    default: ""
+    type: int
+    help: "The port for the server API. Leave blank to disable."
+  - name: Public
+    section: "/Script/Vein.VeinGameSession"
+    key: bPublic
+    default: "true"
+    type: bool
+    help: "Make the server publicly visible in server browsers."
+  - name: GamePort
+    section: URL
+    key: Port
+    default: "7777"
+    type: int
+    help: "The main port for game connections."
+  - name: MaxPlayers
+    section: "/Script/Engine.GameSession"
+    key: MaxPlayers
+    default: "16"
+    type: int
+    help: "Maximum number of players allowed on the server."
+  - name: ServerDescription
+    section: "/Script/Vein.VeinGameSession"
+    key: ServerDescription
+    default: "Short description of your server and your community"
+    type: text
+    help: "A brief description of your server that appears in server browsers."
+  - name: ServerName
+    section: "/Script/Vein.VeinGameSession"
+    key: ServerName
+    default: "My Vein Server"
+    type: str
+    help: "The name of your server as it appears in server browsers."
+  - name: ServerPassword
+    section: "/Script/Vein.VeinGameSession"
+    key: Password
+    default: ""
+    type: str
+    help: "Password required to join the server. Leave blank for no password."
+  - name: SteamQueryPort
+    section: OnlineSubsystemSteam
+    key: GameServerQueryPort
+    default: "27015"
+    type: int
+    help: "The Steam query port for server listing and queries."
+  - name: VACEnabled
+    section: OnlineSubsystemSteam
+    key: bVACEnabled
+    default: "false"
+    type: bool
+    help: "Enable Valve Anti-Cheat (VAC) on the server."
+engine:
+  - name: AISpawner
+    section: ConsoleVariables
+    key: vein.AISpawner.Enabled
+    default: "true"
+    type: bool
+    help: "Enable or disable AI spawners on the server."
+  - name: PVPEnabled
+    section: ConsoleVariables
+    key: vein.PvP
+    default: "true"
+    type: bool
+    help: "Enable or disable PvP mode on the server."
+EOF
+
 	# If a pyenv is required:
-	#sudo -u $GAME_USER python3 -m venv "$GAME_DIR/.venv"
-	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install --upgrade pip
-	#sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install ...
+	sudo -u $GAME_USER python3 -m venv "$GAME_DIR/.venv"
+	sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install --upgrade pip
+	sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install pyyaml
 }
 
 ##
@@ -918,6 +990,7 @@ function uninstall_application() {
 
 	# Management scripts
 	[ -e "$GAME_DIR/manage.py" ] && rm "$GAME_DIR/manage.py"
+	[ -e "$GAME_DIR/configs.yaml" ] && rm "$GAME_DIR/configs.yaml"
 	[ -d "$GAME_DIR/.venv" ] && rm -rf "$GAME_DIR/.venv"
 
 	if [ -n "$WARLOCK_GUID" ]; then
