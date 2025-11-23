@@ -2424,11 +2424,12 @@ def menu_monitor(service: GameService):
 		print('\nExiting monitor...')
 
 
-def menu_backup(game: GameApp):
+def menu_backup(game: GameApp, max_backups: int = 0):
 	"""
 	Backup the game server files
 
 	:param game:
+	:param max_backups: Maximum number of backups to keep (0 = unlimited)
 	:return:
 	"""
 	target_dir = os.path.join(here, 'backups')
@@ -2476,6 +2477,20 @@ def menu_backup(game: GameApp):
 
 	# Cleanup
 	shutil.rmtree(temp_store)
+
+	# Remove old backups if necessary
+	if max_backups > 0:
+		backups = []
+		for f in os.listdir(target_dir):
+			if f.startswith('%s-backup-' % game.name) and f.endswith('.tar.gz'):
+				full_path = os.path.join(target_dir, f)
+				backups.append((full_path, os.path.getmtime(full_path)))
+		backups.sort(key=lambda x: x[1])  # Sort by modification time
+		while len(backups) > max_backups:
+			old_backup = backups.pop(0)
+			os.remove(old_backup[0])
+			print('Removed old backup: %s' % old_backup[0])
+
 	print('Backup saved to %s' % backup_path)
 	sys.exit(0)
 
@@ -2740,6 +2755,12 @@ parser.add_argument(
 	action='store_true'
 )
 parser.add_argument(
+	'--max-backups',
+	help='Maximum number of backups to keep when creating a new backup (default: 0 = unlimited)',
+	type=int,
+	default=0
+)
+parser.add_argument(
 	'--restore',
 	help='Restore the game server files from a backup archive',
 	type=str,
@@ -2817,7 +2838,7 @@ elif args.logs:
 	g = list(services.values())[0]
 	g.print_logs()
 elif args.backup:
-	menu_backup(game)
+	menu_backup(game, args.max_backups)
 elif args.restore != '':
 	menu_restore(game, args.restore)
 elif args.check_update:
