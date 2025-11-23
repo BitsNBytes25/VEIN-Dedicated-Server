@@ -182,7 +182,7 @@ function install_management() {
 	chmod +x "$GAME_DIR/manage.py"
 
 	# Install configuration definitions
-	cat > "$GAME_DIR/config.yaml" <<EOF
+	cat > "$GAME_DIR/configs.yaml" <<EOF
 # script:configs.yaml
 EOF
 

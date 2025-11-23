@@ -1425,6 +1425,7 @@ def menu_get_services(game: GameApp):
 			'ip': get_wan_ip(),
 			'port': game.get_option_value('GamePort'),
 			'status': status,
+			'enabled': g.is_enabled(),
 			'player_count': g.get_player_count(),
 			'max_players': game.get_option_value('MaxPlayers'),
 			'memory_usage': g.get_memory_usage(),
