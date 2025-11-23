@@ -1101,11 +1101,12 @@ def prompt_option(game: GameApp, option: str, title: str = None):
 	game.set_option(option, val)
 
 
-def menu_first_run(game: GameApp):
+def menu_first_run(game: GameApp, interactive: bool = True):
 	"""
 	Display first-run configuration for setting up the game server initially
 
 	:param game:
+	:param interactive:
 	:return:
 	"""
 	print_header('First Run Configuration')
@@ -1114,14 +1115,21 @@ def menu_first_run(game: GameApp):
 		print('ERROR: Please run this script with sudo to perform first-run configuration.')
 		sys.exit(1)
 
-	prompt_option(game, 'ServerName', 'Enter the server name: ')
-	prompt_option(game, 'ServerDescription')
-	if prompt_yn('Require a password for players to join?', 'n'):
-		prompt_option(game, 'Password')
-	prompt_option(game, 'GamePort')
-	prompt_option(game, 'SteamQueryPort')
-	if prompt_yn('Enable game API (strongly recommended)?', 'y'):
-		prompt_option(game, 'APIPort', 'Enter the game API port, eg 8080: ')
+	if interactive:
+		prompt_option(game, 'ServerName', 'Enter the server name: ')
+		prompt_option(game, 'ServerDescription')
+		if prompt_yn('Require a password for players to join?', 'n'):
+			prompt_option(game, 'Password')
+		prompt_option(game, 'GamePort')
+		prompt_option(game, 'SteamQueryPort')
+		if prompt_yn('Enable game API (strongly recommended)?', 'y'):
+			prompt_option(game, 'APIPort', 'Enter the game API port, eg 8080: ')
+	else:
+		# Non-interactive mode, set some reasonable defaults
+		game.set_option('ServerName', 'My VEIN Server')
+		game.set_option('GamePort', '7777')
+		game.set_option('SteamQueryPort', '27015')
+		game.set_option('APIPort', '8080')
 
 
 def menu_service(service: GameService):
@@ -1657,6 +1665,11 @@ parser.add_argument(
 	help='Print the latest logs from the game service',
 	action='store_true'
 )
+parser.add_argument(
+	'--first-run',
+	help='Perform first-run configuration for setting up the game server initially',
+	action='store_true'
+)
 args = parser.parse_args()
 
 game = GameApp()
@@ -1718,10 +1731,12 @@ elif args.set_config != None:
 	else:
 		g = list(services.values())[0]
 		menu_set_service_config(g, option, value)
+elif args.first_run:
+	menu_first_run(game, False)
 else:
 	# Default mode - interactive menu
 	if not game.configured:
-		menu_first_run(game)
+		menu_first_run(game, True)
 
 	if len(services) > 1:
 		print('ERROR: This game only supports one instance', file=sys.stderr)

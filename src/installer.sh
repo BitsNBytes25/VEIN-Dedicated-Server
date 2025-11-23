@@ -89,6 +89,8 @@ print_header "$GAME_DESC *unofficial* Installer ${INSTALLER_VERSION}"
 #   SAVE_DIR     - Directory to store game save files
 #
 function install_application() {
+	print_header "Performing install_application"
+
 	# Create a "steam" user account
 	# This will create the account with no password, so if you need to log in with this user,
 	# run `sudo passwd steam` to set a password.
@@ -162,6 +164,8 @@ EOF
 #   GAME_DIR     - Directory to install the game into
 #
 function install_management() {
+	print_header "Performing install_management"
+
 	# Install management console and its dependencies
 	local SRC=""
 
@@ -192,6 +196,13 @@ EOF
 	sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install pyyaml
 }
 
+function postinstall() {
+	print_header "Performing postinstall"
+
+	# First run setup
+	$GAME_DIR/manage.py --first-run
+}
+
 ##
 # Uninstall the VEIN game server
 #
@@ -201,6 +212,8 @@ EOF
 #   SAVE_DIR     - Directory where game save files are stored
 #
 function uninstall_application() {
+	print_header "Performing uninstall_application"
+
 	systemctl disable $GAME_SERVICE
 	systemctl stop $GAME_SERVICE
 
@@ -329,6 +342,8 @@ if [ "$MODE" == "install" ]; then
 	install_application
 
 	install_management
+
+	postinstall
 
 	# Print some instructions and useful tips
     print_header "$GAME_DESC Installation Complete"
