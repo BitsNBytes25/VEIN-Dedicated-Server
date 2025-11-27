@@ -8,6 +8,36 @@ import os
 import stat
 import json
 import urllib.request
+from pprint import pprint
+
+def parse_scriptlet_url(include_path: str):
+	"""
+	Open compile.sources (if it's available) and parse scriptlet URLs to download them locally
+	:param include_path:
+	:return:
+	"""
+	lookup = include_path.split('/')[0]
+	source = 'github:eVAL-Agency/ScriptsCollection:main'
+	# Default source
+
+	if os.path.exists('compile.sources'):
+		with open('compile.sources', 'r') as f:
+			for line in f:
+				line = line.strip()
+				if line.startswith('%s=' % lookup):
+					source = line[len(lookup)+1:].strip()
+					break
+
+	source_data = source.split(':')
+
+	if source_data[0] == 'github':
+		repo = source_data[1]
+		branch = 'main' if len(source_data) == 2 else source_data[2]
+		url = 'https://raw.githubusercontent.com/%s/refs/heads/%s/scriptlets/%s' % (repo, branch, include_path)
+		return url
+	else:
+		print('Unknown source type: %s' % source_data[0])
+		return None
 
 
 class Script:
@@ -326,9 +356,12 @@ class Script:
 				if not os.path.exists(os.path.dirname(file)):
 					os.makedirs(os.path.dirname(file))
 				try:
-					print('Trying to auto-download %s scriptlet from Github' % include)
-					url_path = 'https://raw.githubusercontent.com/eVAL-Agency/ScriptsCollection/refs/heads/main/scriptlets/%s'
-					urllib.request.urlretrieve(url_path % include, file)
+					print('Trying to auto-download %s scriptlet' % include)
+					url_path = parse_scriptlet_url(include)
+					if url_path is None:
+						print('ERROR - script %s not found' % include)
+					else:
+						urllib.request.urlretrieve(url_path, file)
 				except Exception as e:
 					print('Could not download scriptlet %s' % include)
 
@@ -338,6 +371,9 @@ class Script:
 				script.imports = self.imports
 				# Parse the source
 				script.parse()
+				# Scripts must end with an empty newline.
+				if not script.content_body.endswith('\n'):
+					script.content_body += '\n'
 				return script.content_header + script.content_body
 			else:
 				print('ERROR - script %s not found' % include)
@@ -596,11 +632,11 @@ class Script:
 				# --version=*) VERSION="${1#*=}"; shift 1;;
 				code.append('\t\t%s=*)\n\t\t\t%s="${1#*=}";' % (arg['name'], arg['var']))
 				code.append(
-					'\t\t\tif [ "${%s:0:1}" == "\'" -a "${%s:0-1}" == "\'" ]; then %s="${%s:1:-1}"; fi;' %
+					'\t\t\t[ "${%s:0:1}" == "\'" ] && [ "${%s:0-1}" == "\'" ] && %s="${%s:1:-1}"' %
 					(arg['var'], arg['var'], arg['var'], arg['var'])
 				)
 				code.append(
-					'\t\t\tif [ "${%s:0:1}" == \'"\' -a "${%s:0-1}" == \'"\' ]; then %s="${%s:1:-1}"; fi;' %
+					'\t\t\t[ "${%s:0:1}" == \'"\' ] && [ "${%s:0-1}" == \'"\' ] && %s="${%s:1:-1}"' %
 					(arg['var'], arg['var'], arg['var'], arg['var'])
 				)
 				code.append('\t\t\tshift 1;;')

@@ -11,9 +11,9 @@
 # @CATEGORY Game Server
 # @TRMM-TIMEOUT 600
 # @WARLOCK-TITLE VEIN
-# @WARLOCK-IMAGE https://files.eval.bz/warlock/vein-1280x720.jpg
-# @WARLOCK-ICON https://files.eval.bz/warlock/vein-128x128.png
-# @WARLOCK-THUMBNAIL https://files.eval.bz/warlock/vein_616x353.jpg
+# @WARLOCK-IMAGE media/vein-1280x720.jpg
+# @WARLOCK-ICON media/vein-128x128.png
+# @WARLOCK-THUMBNAIL media/vein_616x353.jpg
 #
 # Supports:
 #   Debian 12, 13
@@ -89,14 +89,14 @@ while [ "$#" -gt 0 ]; do
 		--uninstall) MODE_UNINSTALL=1; shift 1;;
 		--dir=*)
 			OVERRIDE_DIR="${1#*=}";
-			if [ "${OVERRIDE_DIR:0:1}" == "'" -a "${OVERRIDE_DIR:0-1}" == "'" ]; then OVERRIDE_DIR="${OVERRIDE_DIR:1:-1}"; fi;
-			if [ "${OVERRIDE_DIR:0:1}" == '"' -a "${OVERRIDE_DIR:0-1}" == '"' ]; then OVERRIDE_DIR="${OVERRIDE_DIR:1:-1}"; fi;
+			[ "${OVERRIDE_DIR:0:1}" == "'" ] && [ "${OVERRIDE_DIR:0-1}" == "'" ] && OVERRIDE_DIR="${OVERRIDE_DIR:1:-1}"
+			[ "${OVERRIDE_DIR:0:1}" == '"' ] && [ "${OVERRIDE_DIR:0-1}" == '"' ] && OVERRIDE_DIR="${OVERRIDE_DIR:1:-1}"
 			shift 1;;
 		--skip-firewall) SKIP_FIREWALL=1; shift 1;;
 		--branch=*)
 			USE_BRANCH="${1#*=}";
-			if [ "${USE_BRANCH:0:1}" == "'" -a "${USE_BRANCH:0-1}" == "'" ]; then USE_BRANCH="${USE_BRANCH:1:-1}"; fi;
-			if [ "${USE_BRANCH:0:1}" == '"' -a "${USE_BRANCH:0-1}" == '"' ]; then USE_BRANCH="${USE_BRANCH:1:-1}"; fi;
+			[ "${USE_BRANCH:0:1}" == "'" ] && [ "${USE_BRANCH:0-1}" == "'" ] && USE_BRANCH="${USE_BRANCH:1:-1}"
+			[ "${USE_BRANCH:0:1}" == '"' ] && [ "${USE_BRANCH:0-1}" == '"' ] && USE_BRANCH="${USE_BRANCH:1:-1}"
 			shift 1;;
 		--non-interactive) NONINTERACTIVE=1; shift 1;;
 		-h|--help) usage;;
@@ -957,6 +957,72 @@ engine:
     default: "true"
     type: bool
     help: "Enable or disable PvP mode on the server."
+manager:
+  - name: Shutdown Warning 5 Minutes
+    section: Messages
+    key: shutdown_5min
+    type: str
+    default: Server is shutting down in 5 minutes
+    help: "Custom message broadcasted to players 5 minutes before server shutdown."
+  - name: Shutdown Warning 4 Minutes
+    section: Messages
+    key: shutdown_4min
+    type: str
+    default: Server is shutting down in 4 minutes
+    help: "Custom message broadcasted to players 4 minutes before server shutdown."
+  - name: Shutdown Warning 3 Minutes
+    section: Messages
+    key: shutdown_3min
+    type: str
+    default: Server is shutting down in 3 minutes
+    help: "Custom message broadcasted to players 3 minutes before server shutdown."
+  - name: Shutdown Warning 2 Minutes
+    section: Messages
+    key: shutdown_2min
+    type: str
+    default: Server is shutting down in 2 minutes
+    help: "Custom message broadcasted to players 2 minutes before server shutdown."
+  - name: Shutdown Warning 1 Minute
+    section: Messages
+    key: shutdown_1min
+    type: str
+    default: Server is shutting down in 1 minute
+    help: "Custom message broadcasted to players 1 minute before server shutdown."
+  - name: Shutdown Warning 30 Seconds
+    section: Messages
+    key: shutdown_30sec
+    type: str
+    default: Server is shutting down in 30 seconds!
+    help: "Custom message broadcasted to players 30 seconds before server shutdown."
+  - name: Shutdown Warning NOW
+    section: Messages
+    key: shutdown_now
+    type: str
+    default: Server is shutting down NOW!
+    help: "Custom message broadcasted to players immediately before server shutdown."
+  - name: Instance Started (Discord)
+    section: Discord
+    key: instance_started
+    type: str
+    default: "{instance} has started! :rocket:"
+    help: "Custom message sent to Discord when the server starts, use '{instance}' to insert the map name"
+  - name: Instance Stopping (Discord)
+    section: Discord
+    key: instance_stopping
+    type: str
+    default: ":small_red_triangle_down: {instance} is shutting down"
+    help: "Custom message sent to Discord when the server stops, use '{instance}' to insert the map name"
+  - name: Discord Enabled
+    section: Discord
+    key: enabled
+    type: bool
+    default: false
+    help: "Enables or disables Discord integration for server status updates."
+  - name: Discord Webhook URL
+    section: Discord
+    key: webhook
+    type: str
+    help: "The webhook URL for sending server status updates to a Discord channel."
 EOF
 
 	# If a pyenv is required:

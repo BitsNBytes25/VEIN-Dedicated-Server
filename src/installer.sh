@@ -11,9 +11,9 @@
 # @CATEGORY Game Server
 # @TRMM-TIMEOUT 600
 # @WARLOCK-TITLE VEIN
-# @WARLOCK-IMAGE https://files.eval.bz/warlock/vein-1280x720.jpg
-# @WARLOCK-ICON https://files.eval.bz/warlock/vein-128x128.png
-# @WARLOCK-THUMBNAIL https://files.eval.bz/warlock/vein_616x353.jpg
+# @WARLOCK-IMAGE media/vein-1280x720.jpg
+# @WARLOCK-ICON media/vein-128x128.png
+# @WARLOCK-THUMBNAIL media/vein_616x353.jpg
 #
 # Supports:
 #   Debian 12, 13
