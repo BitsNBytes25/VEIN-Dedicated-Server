@@ -40,7 +40,7 @@
 ############################################
 
 # Name of the game (used to create the directory)
-INSTALLER_VERSION="v20251120~DEV"
+INSTALLER_VERSION="v20251129"
 GAME="VEIN"
 GAME_DESC="VEIN Dedicated Server"
 REPO="BitsNBytes25/VEIN-Dedicated-Server"

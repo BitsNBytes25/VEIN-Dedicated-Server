@@ -23,32 +23,6 @@ here = os.path.dirname(os.path.realpath(__file__))
 IS_SUDO = os.geteuid() == 0
 
 
-def format_seconds(seconds: int) -> dict:
-	hours = int(seconds // 3600)
-	minutes = int((seconds - (hours * 3600)) // 60)
-	seconds = int(seconds % 60)
-
-	short_minutes = ('0' + str(minutes)) if minutes < 10 else str(minutes)
-	short_seconds = ('0' + str(seconds)) if seconds < 10 else str(seconds)
-
-	if hours > 0:
-		short = '%s:%s:%s' % (str(hours), short_minutes, short_seconds)
-	else:
-		short = '%s:%s' % (str(minutes), short_seconds)
-
-	return {
-		'h': hours,
-		'm': minutes,
-		's': seconds,
-		'full': '%s hrs %s min %s sec' % (str(hours), str(minutes), str(seconds)),
-		'short': short
-	}
-
-
-class GameAPIException(Exception):
-	pass
-
-
 class GameApp(BaseApp):
 	"""
 	Game application manager
@@ -61,11 +35,6 @@ class GameApp(BaseApp):
 		self.desc = 'VEIN Dedicated Server'
 		self.steam_id = '2131400'
 		self.services = ('vein-server',)
-		self._svcs = None
-
-		uid = os.stat(here).st_uid
-		self.save_dir = '%s/.config/Epic/Vein/Saved/SaveGames/' % pwd.getpwuid(uid).pw_dir
-		# VEIN uses the default Epic save handler which stores saves in ~/.config
 
 		self.configs = {
 			'manager': INIConfig('manager', os.path.join(here, '.settings.ini'))
@@ -80,53 +49,30 @@ class GameApp(BaseApp):
 		"""
 		return steamcmd_check_app_update(os.path.join(here, 'AppFiles', 'steamapps', 'appmanifest_%s.acf' % self.steam_id))
 
-	def backup(self, max_backups: int = 0) -> bool:
+	def get_save_directory(self) -> Union[str, None]:
 		"""
-		Backup the game server files
+		Get the save directory for the game server
 
-		:param max_backups: Maximum number of backups to keep (0 = unlimited)
+		VEIN uses the default Epic save handler which stores saves in ~/.config
+
 		:return:
 		"""
-		temp_store = self.prepare_backup()
+		uid = os.stat(here).st_uid
+		return '%s/.config/Epic/Vein/Saved/SaveGames/' % pwd.getpwuid(uid).pw_dir
 
-		if not os.path.exists(self.save_dir):
-			print('Save directory %s does not exist, cannot continue!' % self.save_dir, file=sys.stderr)
-			return False
+	def get_save_files(self) -> Union[list, None]:
+		"""
+		Get a list of save files / directories for the game server
 
-		# Copy all files from the save directory
-		for f in os.listdir(self.save_dir):
-			src = os.path.join(self.save_dir, f)
-			dst = os.path.join(temp_store, 'save', f)
+		:return:
+		"""
+		save_dir = self.get_save_directory()
+		files = []
+		for f in os.listdir(save_dir):
+			src = os.path.join(save_dir, f)
 			if not os.path.isdir(src):
-				shutil.copy(src, dst)
-
-		backup_path = game.complete_backup(max_backups)
-
-		print('Backup saved to %s' % backup_path)
-		return True
-
-	def restore(self, path: str) -> bool:
-		"""
-		Restore the game server files
-
-		:param path: Path to the backup archive
-		:return:
-		"""
-		temp_store = self.prepare_restore(path)
-		if temp_store is False:
-			return False
-
-		# Restore save content to self.save_dir
-		save_src = os.path.join(temp_store, 'save')
-		print('Restoring save data...')
-		shutil.copytree(
-			os.path.join(save_src),
-			os.path.join(self.save_dir),
-			dirs_exist_ok=True
-		)
-
-		self.complete_restore()
-		return True
+				files.append(f)
+		return files
 
 
 class GameService(HTTPService):
@@ -188,11 +134,11 @@ class GameService(HTTPService):
 		Get the current players on the server, or None if the API is unavailable
 		:return:
 		"""
-		try:
-			ret = self._http_cmd('/players')
-			return ret['players']
-		except GameAPIException:
+		ret = self._api_cmd('/players')
+		if ret is None:
 			return None
+		else:
+			return ret['players']
 
 	def get_player_count(self) -> Union[int, None]:
 		"""
@@ -228,11 +174,7 @@ class GameService(HTTPService):
 
 		:return:
 		"""
-		try:
-			ret = self._http_cmd('/status')
-			return ret
-		except GameAPIException:
-			return None
+		return self._api_cmd('/status')
 
 	def get_weather(self) -> Union[dict, None]:
 		"""
@@ -250,11 +192,7 @@ class GameService(HTTPService):
 
 		:return:
 		"""
-		try:
-			ret = self._http_cmd('/weather')
-			return ret
-		except GameAPIException:
-			return None
+		return self._api_cmd('/weather')
 
 	def get_name(self) -> str:
 		"""
@@ -297,75 +235,7 @@ class GameService(HTTPService):
 
 		pass
 		# @todo Vein just implemented this but is yet to publish documentation on how to use it.
-		#try:
-		#	self._api_cmd('/notification', method='POST', data={'message': message})
-		#except GameAPIException as e:
-		#	print('Failed to send message via API: %s' % str(e))
-
-	def post_start(self) -> bool:
-		"""
-		Perform the necessary operations for after a game has started
-		:return:
-		"""
-		if self.is_api_enabled():
-			counter = 0
-			print('Waiting for API to become available...')
-			while counter < 24:
-				players = self.get_player_count()
-				if players is not None:
-					msg = self.game.get_option_value('Instance Started (Discord)')
-					if '{instance}' in msg:
-						msg = msg.replace('{instance}', self.get_name())
-					self.game.send_discord_message(msg)
-					return True
-				else:
-					print('API not available yet')
-
-				time.sleep(10)
-				counter += 1
-
-			print('API did not reply within the allowed time!', file=sys.stderr)
-			return False
-		else:
-			# API not available, so nothing to check.
-			return True
-
-	def pre_stop(self) -> bool:
-		"""
-		Perform operations necessary for safely stopping a server
-
-		Called automatically via systemd
-		:return:
-		"""
-		msg = self.game.get_option_value('Instance Stopping (Discord)')
-		if '{instance}' in msg:
-			msg = msg.replace('{instance}', self.get_name())
-		self.game.send_discord_message(msg)
-
-		# Disabling until VEIN publishes their documentation on notifications
-		'''
-		if self.is_api_enabled():
-			timers = (
-				(self.game.get_option_value('Shutdown Warning 5 Minutes'), 60),
-				(self.game.get_option_value('Shutdown Warning 4 Minutes'), 60),
-				(self.game.get_option_value('Shutdown Warning 3 Minutes'), 60),
-				(self.game.get_option_value('Shutdown Warning 2 Minutes'), 60),
-				(self.game.get_option_value('Shutdown Warning 1 Minute'), 30),
-				(self.game.get_option_value('Shutdown Warning 30 Seconds'), 30),
-				(self.game.get_option_value('Shutdown Warning NOW'), 0),
-			)
-			for timer in timers:
-				players = self.get_player_count()
-				if players is not None and players > 0:
-					print('Players are online, sending warning message: %s' % timer[0])
-					self.send_message(timer[0])
-					if timer[1]:
-						time.sleep(timer[1])
-				else:
-					break
-			self.save_world()
-		'''
-		return True
+		# self._api_cmd('/notification', method='POST', data={'message': message})
 
 
 def menu_first_run(game: GameApp):
