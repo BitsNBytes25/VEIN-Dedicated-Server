@@ -818,6 +818,7 @@ Environment=XDG_RUNTIME_DIR=/run/user/$(id -u $GAME_USER)
 #Environment="STEAM_COMPAT_CLIENT_INSTALL_PATH=$STEAM_DIR"
 ExecStart=$GAME_DIR/AppFiles/VeinServer.sh -log
 ExecStop=$GAME_DIR/manage.py --pre-stop --service ${GAME_SERVICE}
+ExecStartPost=$GAME_DIR/manage.py --post-start --service ${GAME_SERVICE}
 Restart=on-failure
 RestartSec=1800s
 TimeoutStartSec=600s
