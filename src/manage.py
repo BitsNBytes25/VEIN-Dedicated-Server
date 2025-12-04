@@ -36,6 +36,8 @@ class GameApp(SteamApp):
 		}
 		self.load()
 
+		self.steam_branch = self.get_option_value('Steam Branch')
+
 	def get_save_directory(self) -> Union[str, None]:
 		"""
 		Get the save directory for the game server

@@ -353,7 +353,6 @@ def get_wan_ip() -> Union[str, None]:
 		return None
 
 
-
 class BaseApp:
 	"""
 	Game application manager
@@ -579,6 +578,16 @@ class BaseApp:
 		:return:
 		"""
 		return False
+
+	def post_update(self):
+		"""
+		Perform any post-update actions needed for this game
+
+		Called immediately after an update is performed but before services are restarted.
+
+		:return:
+		"""
+		pass
 
 	def send_discord_message(self, message: str):
 		"""
@@ -1169,6 +1178,8 @@ class SteamApp(BaseApp):
 	def __init__(self):
 		super().__init__()
 		self.steam_id = ''
+		self.steam_branch = 'public'
+		self.steam_branch_password = ''
 
 	def check_update_available(self) -> bool:
 		"""
@@ -1219,20 +1230,31 @@ class SteamApp(BaseApp):
 			'anonymous',
 			'+app_update',
 			self.steam_id,
-			'validate',
-			'+quit'
 		]
+
+		if self.steam_branch != 'public':
+			cmd.append('-beta')
+			cmd.append(self.steam_branch)
+			if self.steam_branch_password != '':
+				cmd.append('-betapassword')
+				cmd.append(self.steam_branch_password)
+
+		cmd.append('validate')
+		cmd.append('+quit')
 
 		if os.geteuid() == 0:
 			stat_info = os.stat(here)
 			uid = stat_info.st_uid
 			cmd = [
-				'sudo',
-				'-u',
-				'#%s' % uid
-			] + cmd
+				      'sudo',
+				      '-u',
+				      '#%s' % uid
+			      ] + cmd
 
 		res = subprocess.run(cmd)
+
+		# Allow the game to perform any post-update tasks
+		self.post_update()
 
 		if len(services) > 0:
 			print('Update completed, restarting previously running services...')
@@ -3128,6 +3150,8 @@ class GameApp(SteamApp):
 			'manager': INIConfig('manager', os.path.join(here, '.settings.ini'))
 		}
 		self.load()
+
+		self.steam_branch = self.get_option_value('Steam Branch')
 
 	def get_save_directory(self) -> Union[str, None]:
 		"""
