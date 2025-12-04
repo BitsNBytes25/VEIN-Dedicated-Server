@@ -243,13 +243,13 @@ def menu_first_run(game: GameApp):
 	svc = game.get_services()[0]
 
 	if not svc.option_has_value('ServerName'):
-		svc.set_option_value('ServerName', 'My VEIN Server')
+		svc.set_option('ServerName', 'My VEIN Server')
 	if not svc.option_has_value('GamePort'):
-		svc.set_option_value('GamePort', '7777')
+		svc.set_option('GamePort', '7777')
 	if not svc.option_has_value('SteamQueryPort'):
-		svc.set_option_value('SteamQueryPort', '27015')
+		svc.set_option('SteamQueryPort', '27015')
 	if not svc.option_has_value('APIPort'):
-		svc.set_option_value('APIPort', '8080')
+		svc.set_option('APIPort', '8080')
 
 if __name__ == '__main__':
 	game = GameApp()
