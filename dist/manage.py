@@ -1246,10 +1246,10 @@ class SteamApp(BaseApp):
 			stat_info = os.stat(here)
 			uid = stat_info.st_uid
 			cmd = [
-				      'sudo',
-				      '-u',
-				      '#%s' % uid
-			      ] + cmd
+				'sudo',
+				'-u',
+				'#%s' % uid
+			] + cmd
 
 		res = subprocess.run(cmd)
 
