@@ -1036,6 +1036,11 @@ manager:
     type: str
     help: "The webhook URL for sending server status updates to a Discord channel."
 EOF
+	chown $GAME_USER:$GAME_USER "$GAME_DIR/configs.yaml"
+
+	# Initial settings
+	touch "$GAME_DIR/.settings.ini"
+	chown $GAME_USER:$GAME_USER "$GAME_DIR/.settings.ini"
 
 	# If a pyenv is required:
 	sudo -u $GAME_USER python3 -m venv "$GAME_DIR/.venv"

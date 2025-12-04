@@ -194,6 +194,11 @@ function install_management() {
 	cat > "$GAME_DIR/configs.yaml" <<EOF
 # script:configs.yaml
 EOF
+	chown $GAME_USER:$GAME_USER "$GAME_DIR/configs.yaml"
+
+	# Initial settings
+	touch "$GAME_DIR/.settings.ini"
+	chown $GAME_USER:$GAME_USER "$GAME_DIR/.settings.ini"
 
 	# If a pyenv is required:
 	sudo -u $GAME_USER python3 -m venv "$GAME_DIR/.venv"
