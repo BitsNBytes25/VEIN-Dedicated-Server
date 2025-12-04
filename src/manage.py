@@ -8,22 +8,17 @@ from scriptlets.bz_eval_tui.table import *
 from scriptlets.bz_eval_tui.print_header import *
 from scriptlets._common.get_wan_ip import *
 # import:org_python/venv_path_include.py
-import yaml
-from scriptlets.warlock.base_app import *
+from scriptlets.warlock.steam_app import *
 from scriptlets.warlock.http_service import *
 from scriptlets.warlock.ini_config import *
 from scriptlets.warlock.unreal_config import *
 from scriptlets.warlock.default_run import *
-from scriptlets.steam.steamcmd_check_app_update import *
 
 
 here = os.path.dirname(os.path.realpath(__file__))
 
-# Require sudo / root for starting/stopping the service
-IS_SUDO = os.geteuid() == 0
 
-
-class GameApp(BaseApp):
+class GameApp(SteamApp):
 	"""
 	Game application manager
 	"""
@@ -40,14 +35,6 @@ class GameApp(BaseApp):
 			'manager': INIConfig('manager', os.path.join(here, '.settings.ini'))
 		}
 		self.load()
-
-	def check_update_available(self) -> bool:
-		"""
-		Check if a SteamCMD update is available for this game
-
-		:return:
-		"""
-		return steamcmd_check_app_update(os.path.join(here, 'AppFiles', 'steamapps', 'appmanifest_%s.acf' % self.steam_id))
 
 	def get_save_directory(self) -> Union[str, None]:
 		"""
@@ -247,7 +234,7 @@ def menu_first_run(game: GameApp):
 	"""
 	print_header('First Run Configuration')
 
-	if not IS_SUDO:
+	if os.geteuid() != 0:
 		print('ERROR: Please run this script with sudo to perform first-run configuration.')
 		sys.exit(1)
 

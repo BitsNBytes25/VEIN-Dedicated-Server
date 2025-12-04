@@ -29,7 +29,6 @@
 #   --uninstall  - Perform an uninstallation
 #   --dir=<path> - Use a custom installation directory instead of the default (optional)
 #   --skip-firewall  - Do not install or configure a system firewall
-#   --branch=<stable|experimental> - Install a different branch from Steam (optional)
 #   --non-interactive  - Run the installer in non-interactive mode (useful for scripted installs)
 #
 # Changelog:
@@ -66,7 +65,6 @@ Options:
     --uninstall  - Perform an uninstallation
     --dir=<path> - Use a custom installation directory instead of the default (optional)
     --skip-firewall  - Do not install or configure a system firewall
-    --branch=<stable|experimental> - Install a different branch from Steam (optional)
     --non-interactive  - Run the installer in non-interactive mode (useful for scripted installs)
 
 https://ramjet.notion.site
@@ -82,7 +80,6 @@ EOD
 MODE_UNINSTALL=0
 OVERRIDE_DIR=""
 SKIP_FIREWALL=0
-USE_BRANCH=""
 NONINTERACTIVE=0
 while [ "$#" -gt 0 ]; do
 	case "$1" in
@@ -93,11 +90,6 @@ while [ "$#" -gt 0 ]; do
 			[ "${OVERRIDE_DIR:0:1}" == '"' ] && [ "${OVERRIDE_DIR:0-1}" == '"' ] && OVERRIDE_DIR="${OVERRIDE_DIR:1:-1}"
 			shift 1;;
 		--skip-firewall) SKIP_FIREWALL=1; shift 1;;
-		--branch=*)
-			USE_BRANCH="${1#*=}";
-			[ "${USE_BRANCH:0:1}" == "'" ] && [ "${USE_BRANCH:0-1}" == "'" ] && USE_BRANCH="${USE_BRANCH:1:-1}"
-			[ "${USE_BRANCH:0:1}" == '"' ] && [ "${USE_BRANCH:0-1}" == '"' ] && USE_BRANCH="${USE_BRANCH:1:-1}"
-			shift 1;;
 		--non-interactive) NONINTERACTIVE=1; shift 1;;
 		-h|--help) usage;;
 	esac
@@ -789,10 +781,16 @@ function install_application() {
 		fi
 	fi
 
+	[ -e "$GAME_DIR/AppFiles" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/AppFiles"
+
 	# Install steam binary and steamcmd
 	install_steamcmd
 
-	if ! sudo -u $GAME_USER /usr/games/steamcmd +force_install_dir "$GAME_DIR/AppFiles" +login anonymous +app_update $STEAM_ID validate +quit; then
+	# Install the management script
+	install_management
+
+	# Use the management script to install the game server
+	if ! $GAME_DIR/manage.py --update; then
 		echo "Could not install $GAME_DESC, exiting" >&2
 		exit 1
 	fi
@@ -818,7 +816,6 @@ WorkingDirectory=$GAME_DIR/AppFiles
 Environment=XDG_RUNTIME_DIR=/run/user/$(id -u $GAME_USER)
 # Only required for games which utilize Proton
 #Environment="STEAM_COMPAT_CLIENT_INSTALL_PATH=$STEAM_DIR"
-ExecStartPre=/usr/games/steamcmd +force_install_dir $GAME_DIR/AppFiles +login anonymous +app_update ${STEAM_ID}${STEAMBETABRANCH} validate +quit
 ExecStart=$GAME_DIR/AppFiles/VeinServer.sh -log
 ExecStop=$GAME_DIR/manage.py --pre-stop --service ${GAME_SERVICE}
 Restart=on-failure
@@ -958,6 +955,21 @@ engine:
     type: bool
     help: "Enable or disable PvP mode on the server."
 manager:
+  - name: Steam Branch
+    section: Steam
+    key: steam_branch
+    type: str
+    default: public
+    help: "The Steam branch to install the server from (e.g., stable, experimental)."
+    options:
+      - public
+      - experimental
+  - name: Steam Branch Password
+    section: Steam
+    key: steam_branch_password
+    type: str
+    default: ""
+    help: "The password for accessing a private Steam branch, if applicable."
   - name: Shutdown Warning 5 Minutes
     section: Messages
     key: shutdown_5min
@@ -1099,21 +1111,21 @@ fi
 if [ -n "$OVERRIDE_DIR" ]; then
 	# User requested to change the install dir!
 	# This changes the GAME_DIR from the default location to wherever the user requested.
-	if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
-    	# Check for existing installation directory based on service file
-    	GAME_DIR="$(egrep '^WorkingDirectory' "/etc/systemd/system/${GAME_SERVICE}.service" | sed 's:.*=\(.*\)/AppFiles.*:\1:')"
-    	if [ "$GAME_DIR" != "$OVERRIDE_DIR" ]; then
-    		echo "ERROR: $GAME_DESC already installed in $GAME_DIR, cannot override to $OVERRIDE_DIR" >&2
-    		echo "If you want to move the installation, please uninstall first and then re-install to the new location." >&2
-    		exit 1
+	if [ -e "/var/lib/warlock/${WARLOCK_GUID}.app" ] ; then
+		# Check for existing installation directory based on Warlock registration
+		GAME_DIR="$(cat "/var/lib/warlock/${WARLOCK_GUID}.app")"
+		if [ "$GAME_DIR" != "$OVERRIDE_DIR" ]; then
+			echo "ERROR: $GAME_DESC already installed in $GAME_DIR, cannot override to $OVERRIDE_DIR" >&2
+			echo "If you want to move the installation, please uninstall first and then re-install to the new location." >&2
+			exit 1
 		fi
 	fi
 
 	GAME_DIR="$OVERRIDE_DIR"
 	echo "Using ${GAME_DIR} as the installation directory based on explicit argument"
-elif [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
+elif [ -e "/var/lib/warlock/${WARLOCK_GUID}.app" ]; then
 	# Check for existing installation directory based on service file
-	GAME_DIR="$(egrep '^WorkingDirectory' "/etc/systemd/system/${GAME_SERVICE}.service" | sed 's:.*=\(.*\)/AppFiles.*:\1:')"
+	GAME_DIR="$(cat "/var/lib/warlock/${WARLOCK_GUID}.app")"
 	echo "Detected installation directory of ${GAME_DIR} based on service registration"
 else
 	echo "Using default installation directory of ${GAME_DIR}"
@@ -1123,16 +1135,6 @@ if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
 	EXISTING=1
 else
 	EXISTING=0
-fi
-
-if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
-	if egrep -q '^ExecStartPre=.*-beta ' "/etc/systemd/system/${GAME_SERVICE}.service"; then
-		BETA="$(egrep '^ExecStartPre=.*-beta ' "/etc/systemd/system/${GAME_SERVICE}.service" | sed 's:.*-beta \([^ ]*\) .*:\1:')"
-	else
-		BETA=""
-	fi
-else
-	BETA=""
 fi
 
 ############################################
@@ -1150,33 +1152,7 @@ if [ "$MODE" == "install" ]; then
 		FIREWALL=0
 	fi
 
-	if [ -n "$USE_BRANCH" ]; then
-		# User requested a specific branch
-		if [ "$USE_BRANCH" == "stable" ]; then
-			BETA=""
-		else
-			BETA="$USE_BRANCH"
-		fi
-	elif [ -n "$BETA" ]; then
-		echo "Using beta branch $BETA"
-		if prompt_yn -q --default-no "Switch to stable branch?"; then
-			BETA=""
-		fi
-	else
-		if prompt_yn -q --default-no "Install experimental branch?"; then
-			BETA="experimental"
-		fi
-	fi
-
-	if [ -n "$BETA" ]; then
-		STEAMBETABRANCH=" -beta $BETA"
-	else
-		STEAMBETABRANCH=""
-	fi
-
 	install_application
-
-	install_management
 
 	postinstall
 

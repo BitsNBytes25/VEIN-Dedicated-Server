@@ -29,7 +29,6 @@
 #   MODE_UNINSTALL=--uninstall - Perform an uninstallation
 #   OVERRIDE_DIR=--dir=<path> - Use a custom installation directory instead of the default (optional)
 #   SKIP_FIREWALL=--skip-firewall - Do not install or configure a system firewall
-#   USE_BRANCH=--branch=<stable|experimental> - Install a different branch from Steam (optional)
 #   NONINTERACTIVE=--non-interactive - Run the installer in non-interactive mode (useful for scripted installs)
 #
 # Changelog:
@@ -109,10 +108,16 @@ function install_application() {
 		fi
 	fi
 
+	[ -e "$GAME_DIR/AppFiles" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/AppFiles"
+
 	# Install steam binary and steamcmd
 	install_steamcmd
 
-	if ! sudo -u $GAME_USER /usr/games/steamcmd +force_install_dir "$GAME_DIR/AppFiles" +login anonymous +app_update $STEAM_ID validate +quit; then
+	# Install the management script
+	install_management
+
+	# Use the management script to install the game server
+	if ! $GAME_DIR/manage.py --update; then
 		echo "Could not install $GAME_DESC, exiting" >&2
 		exit 1
 	fi
@@ -264,21 +269,21 @@ fi
 if [ -n "$OVERRIDE_DIR" ]; then
 	# User requested to change the install dir!
 	# This changes the GAME_DIR from the default location to wherever the user requested.
-	if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
-    	# Check for existing installation directory based on service file
-    	GAME_DIR="$(egrep '^WorkingDirectory' "/etc/systemd/system/${GAME_SERVICE}.service" | sed 's:.*=\(.*\)/AppFiles.*:\1:')"
-    	if [ "$GAME_DIR" != "$OVERRIDE_DIR" ]; then
-    		echo "ERROR: $GAME_DESC already installed in $GAME_DIR, cannot override to $OVERRIDE_DIR" >&2
-    		echo "If you want to move the installation, please uninstall first and then re-install to the new location." >&2
-    		exit 1
+	if [ -e "/var/lib/warlock/${WARLOCK_GUID}.app" ] ; then
+		# Check for existing installation directory based on Warlock registration
+		GAME_DIR="$(cat "/var/lib/warlock/${WARLOCK_GUID}.app")"
+		if [ "$GAME_DIR" != "$OVERRIDE_DIR" ]; then
+			echo "ERROR: $GAME_DESC already installed in $GAME_DIR, cannot override to $OVERRIDE_DIR" >&2
+			echo "If you want to move the installation, please uninstall first and then re-install to the new location." >&2
+			exit 1
 		fi
 	fi
 
 	GAME_DIR="$OVERRIDE_DIR"
 	echo "Using ${GAME_DIR} as the installation directory based on explicit argument"
-elif [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
+elif [ -e "/var/lib/warlock/${WARLOCK_GUID}.app" ]; then
 	# Check for existing installation directory based on service file
-	GAME_DIR="$(egrep '^WorkingDirectory' "/etc/systemd/system/${GAME_SERVICE}.service" | sed 's:.*=\(.*\)/AppFiles.*:\1:')"
+	GAME_DIR="$(cat "/var/lib/warlock/${WARLOCK_GUID}.app")"
 	echo "Detected installation directory of ${GAME_DIR} based on service registration"
 else
 	echo "Using default installation directory of ${GAME_DIR}"
@@ -288,16 +293,6 @@ if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
 	EXISTING=1
 else
 	EXISTING=0
-fi
-
-if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
-	if egrep -q '^ExecStartPre=.*-beta ' "/etc/systemd/system/${GAME_SERVICE}.service"; then
-		BETA="$(egrep '^ExecStartPre=.*-beta ' "/etc/systemd/system/${GAME_SERVICE}.service" | sed 's:.*-beta \([^ ]*\) .*:\1:')"
-	else
-		BETA=""
-	fi
-else
-	BETA=""
 fi
 
 ############################################
@@ -315,33 +310,7 @@ if [ "$MODE" == "install" ]; then
 		FIREWALL=0
 	fi
 
-	if [ -n "$USE_BRANCH" ]; then
-		# User requested a specific branch
-		if [ "$USE_BRANCH" == "stable" ]; then
-			BETA=""
-		else
-			BETA="$USE_BRANCH"
-		fi
-	elif [ -n "$BETA" ]; then
-		echo "Using beta branch $BETA"
-		if prompt_yn -q --default-no "Switch to stable branch?"; then
-			BETA=""
-		fi
-	else
-		if prompt_yn -q --default-no "Install experimental branch?"; then
-			BETA="experimental"
-		fi
-	fi
-
-	if [ -n "$BETA" ]; then
-		STEAMBETABRANCH=" -beta $BETA"
-	else
-		STEAMBETABRANCH=""
-	fi
-
 	install_application
-
-	install_management
 
 	postinstall
 
