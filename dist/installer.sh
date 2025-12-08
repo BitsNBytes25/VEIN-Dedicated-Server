@@ -772,7 +772,7 @@ function install_application() {
 
 	# Preliminary requirements
 	# VEIN needs ALSA and PulseAudio libraries to run
-	package_install curl sudo libasound2-data libpulse0 python3-venv
+	package_install curl sudo libasound2-data libpulse0 python3-venv libatomic1
 
 	if [ "$FIREWALL" == "1" ]; then
 		if [ "$(get_enabled_firewall)" == "none" ]; then
