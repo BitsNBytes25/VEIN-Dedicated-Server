@@ -226,6 +226,17 @@ class GameService(HTTPService):
 		# @todo Vein just implemented this but is yet to publish documentation on how to use it.
 		# self._api_cmd('/notification', method='POST', data={'message': message})
 
+	def get_port_definitions(self) -> list:
+		"""
+		Get a list of port definitions for this service
+		:return:
+		"""
+		return [
+			('APIPort', 'tcp', '%s API port' % self.game.desc),
+			('GamePort', 'udp', '%s game port' % self.game.desc),
+			('SteamQueryPort', 'udp', '%s Steam query port' % self.game.desc)
+		]
+
 
 def menu_first_run(game: GameApp):
 	"""
