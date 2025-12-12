@@ -742,120 +742,6 @@ function install_ufw() {
 		ufw allow from $TTY_IP comment 'Anti-lockout rule based on first install of UFW'
 	fi
 }
-
-print_header "$GAME_DESC *unofficial* Installer ${INSTALLER_VERSION}"
-
-############################################
-## Installer Actions
-############################################
-
-##
-# Install the VEIN game server using Steam
-#
-# Expects the following variables:
-#   GAME_USER    - User account to install the game under
-#   GAME_DIR     - Directory to install the game into
-#   STEAM_ID     - Steam App ID of the game
-#   GAME_DESC    - Description of the game (for logging purposes)
-#   GAME_SERVICE - Service name to install with Systemd
-#   SAVE_DIR     - Directory to store game save files
-#
-function install_application() {
-	print_header "Performing install_application"
-
-	# Create a "steam" user account
-	# This will create the account with no password, so if you need to log in with this user,
-	# run `sudo passwd steam` to set a password.
-	if [ -z "$(getent passwd $GAME_USER)" ]; then
-		useradd -m -U $GAME_USER
-	fi
-
-	# Preliminary requirements
-	# VEIN needs ALSA and PulseAudio libraries to run
-	package_install curl sudo libasound2-data libpulse0 python3-venv libatomic1
-
-	if [ "$FIREWALL" == "1" ]; then
-		if [ "$(get_enabled_firewall)" == "none" ]; then
-			# No firewall installed, go ahead and install UFW
-			install_ufw
-		fi
-	fi
-
-	[ -e "$GAME_DIR/AppFiles" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/AppFiles"
-
-	# Install steam binary and steamcmd
-	install_steamcmd
-
-	# Install the management script
-	install_management
-
-	# Use the management script to install the game server
-	if ! $GAME_DIR/manage.py --update; then
-		echo "Could not install $GAME_DESC, exiting" >&2
-		exit 1
-	fi
-
-	# VEIN requires the Steam client binary to be loaded into the game server
-	[ -h "$GAME_DIR/AppFiles/Vein/Binaries/Linux/steamclient.so" ] || \
-		sudo -u $GAME_USER \
-		ln -s /home/$GAME_USER/.steam/steam/steamcmd/linux64/steamclient.so "$GAME_DIR/AppFiles/Vein/Binaries/Linux/steamclient.so"
-
-	# Install system service file to be loaded by systemd
-    cat > /etc/systemd/system/${GAME_SERVICE}.service <<EOF
-[Unit]
-# DYNAMICALLY GENERATED FILE! Edit at your own risk
-Description=$GAME_DESC
-After=network.target
-
-[Service]
-Type=simple
-LimitNOFILE=10000
-User=$GAME_USER
-Group=$GAME_USER
-WorkingDirectory=$GAME_DIR/AppFiles
-Environment=XDG_RUNTIME_DIR=/run/user/$(id -u $GAME_USER)
-# Only required for games which utilize Proton
-#Environment="STEAM_COMPAT_CLIENT_INSTALL_PATH=$STEAM_DIR"
-ExecStart=$GAME_DIR/AppFiles/VeinServer.sh -log
-ExecStop=$GAME_DIR/manage.py --pre-stop --service ${GAME_SERVICE}
-ExecStartPost=$GAME_DIR/manage.py --post-start --service ${GAME_SERVICE}
-Restart=on-failure
-RestartSec=1800s
-TimeoutStartSec=600s
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    systemctl daemon-reload
-    systemctl enable $GAME_SERVICE
-
-    # Ensure necessary directories exist
-    [ -d "$SAVE_DIR" ] || sudo -u $GAME_USER mkdir -p "$SAVE_DIR"
-
-    # Ensure game configurations exist, (for convenience)
-    [ -e "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer" ] || \
-    	sudo -u $GAME_USER mkdir -p "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer"
-	[ -e "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/Game.ini" ] || \
-		sudo -u $GAME_USER touch "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/Game.ini"
-	[ -e "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/GameUserSettings.ini" ] || \
-		sudo -u $GAME_USER touch "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/GameUserSettings.ini"
-
-	# Symlink for convenience
-	[ -h "$GAME_DIR/Game.ini" ] || \
-		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/Game.ini" "$GAME_DIR/Game.ini"
-	[ -h "$GAME_DIR/GameUserSettings.ini" ] || \
-		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/GameUserSettings.ini" "$GAME_DIR/GameUserSettings.ini"
-	[ -h "$GAME_DIR/SaveGames" ] || sudo -u $GAME_USER ln -s "$SAVE_DIR" "$GAME_DIR/SaveGames"
-	[ -h "$GAME_DIR/Vein.log" ] || \
-		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/Logs/Vein.log" "$GAME_DIR/Vein.log"
-
-	if [ -n "$WARLOCK_GUID" ]; then
-		# Register Warlock
-		[ -d "/var/lib/warlock" ] || mkdir -p "/var/lib/warlock"
-		echo -n "$GAME_DIR" > "/var/lib/warlock/${WARLOCK_GUID}.app"
-	fi
-}
-
 ##
 # Install the management script from the project's repo
 #
@@ -863,19 +749,14 @@ EOF
 #   GAME_USER    - User account to install the game under
 #   GAME_DIR     - Directory to install the game into
 #
-function install_management() {
+function install_warlock_manager() {
 	print_header "Performing install_management"
 
 	# Install management console and its dependencies
 	local SRC=""
+	local REPO="$1"
 
-	if [[ "$INSTALLER_VERSION" == *"~DEV"* ]]; then
-		# Development version, pull from dev branch
-		SRC="https://raw.githubusercontent.com/${REPO}/refs/heads/dev/dist/manage.py"
-	else
-		# Stable version, pull from tagged release
-		SRC="https://raw.githubusercontent.com/${REPO}/refs/tags/${INSTALLER_VERSION}/dist/manage.py"
-	fi
+	SRC="https://raw.githubusercontent.com/${REPO}/refs/heads/main/dist/manage.py"
 
 	if ! download "$SRC" "$GAME_DIR/manage.py"; then
 		echo "Could not download management script!" >&2
@@ -1039,7 +920,7 @@ manager:
 EOF
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/configs.yaml"
 
-	# Initial settings
+	# Most games use .settings.ini for manager settings
 	touch "$GAME_DIR/.settings.ini"
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/.settings.ini"
 
@@ -1047,6 +928,119 @@ EOF
 	sudo -u $GAME_USER python3 -m venv "$GAME_DIR/.venv"
 	sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install --upgrade pip
 	sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install pyyaml
+}
+
+print_header "$GAME_DESC *unofficial* Installer"
+
+############################################
+## Installer Actions
+############################################
+
+##
+# Install the VEIN game server using Steam
+#
+# Expects the following variables:
+#   GAME_USER    - User account to install the game under
+#   GAME_DIR     - Directory to install the game into
+#   STEAM_ID     - Steam App ID of the game
+#   GAME_DESC    - Description of the game (for logging purposes)
+#   GAME_SERVICE - Service name to install with Systemd
+#   SAVE_DIR     - Directory to store game save files
+#
+function install_application() {
+	print_header "Performing install_application"
+
+	# Create a "steam" user account
+	# This will create the account with no password, so if you need to log in with this user,
+	# run `sudo passwd steam` to set a password.
+	if [ -z "$(getent passwd $GAME_USER)" ]; then
+		useradd -m -U $GAME_USER
+	fi
+
+	# Preliminary requirements
+	# VEIN needs ALSA and PulseAudio libraries to run
+	package_install curl sudo libasound2-data libpulse0 python3-venv libatomic1
+
+	if [ "$FIREWALL" == "1" ]; then
+		if [ "$(get_enabled_firewall)" == "none" ]; then
+			# No firewall installed, go ahead and install UFW
+			install_ufw
+		fi
+	fi
+
+	[ -e "$GAME_DIR/AppFiles" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/AppFiles"
+
+	# Install steam binary and steamcmd
+	install_steamcmd
+
+	# Install the management script
+	install_warlock_manager "$REPO"
+
+	# Use the management script to install the game server
+	if ! $GAME_DIR/manage.py --update; then
+		echo "Could not install $GAME_DESC, exiting" >&2
+		exit 1
+	fi
+
+	# VEIN requires the Steam client binary to be loaded into the game server
+	[ -h "$GAME_DIR/AppFiles/Vein/Binaries/Linux/steamclient.so" ] || \
+		sudo -u $GAME_USER \
+		ln -s /home/$GAME_USER/.steam/steam/steamcmd/linux64/steamclient.so "$GAME_DIR/AppFiles/Vein/Binaries/Linux/steamclient.so"
+
+	# Install system service file to be loaded by systemd
+    cat > /etc/systemd/system/${GAME_SERVICE}.service <<EOF
+[Unit]
+# DYNAMICALLY GENERATED FILE! Edit at your own risk
+Description=$GAME_DESC
+After=network.target
+
+[Service]
+Type=simple
+LimitNOFILE=10000
+User=$GAME_USER
+Group=$GAME_USER
+WorkingDirectory=$GAME_DIR/AppFiles
+Environment=XDG_RUNTIME_DIR=/run/user/$(id -u $GAME_USER)
+# Only required for games which utilize Proton
+#Environment="STEAM_COMPAT_CLIENT_INSTALL_PATH=$STEAM_DIR"
+ExecStart=$GAME_DIR/AppFiles/VeinServer.sh -log
+ExecStop=$GAME_DIR/manage.py --pre-stop --service ${GAME_SERVICE}
+ExecStartPost=$GAME_DIR/manage.py --post-start --service ${GAME_SERVICE}
+Restart=on-failure
+RestartSec=1800s
+TimeoutStartSec=600s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable $GAME_SERVICE
+
+    # Ensure necessary directories exist
+    [ -d "$SAVE_DIR" ] || sudo -u $GAME_USER mkdir -p "$SAVE_DIR"
+
+    # Ensure game configurations exist, (for convenience)
+    [ -e "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer" ] || \
+    	sudo -u $GAME_USER mkdir -p "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer"
+	[ -e "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/Game.ini" ] || \
+		sudo -u $GAME_USER touch "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/Game.ini"
+	[ -e "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/GameUserSettings.ini" ] || \
+		sudo -u $GAME_USER touch "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/GameUserSettings.ini"
+
+	# Symlink for convenience
+	[ -h "$GAME_DIR/Game.ini" ] || \
+		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/Game.ini" "$GAME_DIR/Game.ini"
+	[ -h "$GAME_DIR/GameUserSettings.ini" ] || \
+		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/GameUserSettings.ini" "$GAME_DIR/GameUserSettings.ini"
+	[ -h "$GAME_DIR/SaveGames" ] || sudo -u $GAME_USER ln -s "$SAVE_DIR" "$GAME_DIR/SaveGames"
+	[ -h "$GAME_DIR/Vein.log" ] || \
+		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/Logs/Vein.log" "$GAME_DIR/Vein.log"
+
+	if [ -n "$WARLOCK_GUID" ]; then
+		# Register Warlock
+		[ -d "/var/lib/warlock" ] || mkdir -p "/var/lib/warlock"
+		echo -n "$GAME_DIR" > "/var/lib/warlock/${WARLOCK_GUID}.app"
+	fi
 }
 
 function postinstall() {

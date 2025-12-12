@@ -1746,7 +1746,7 @@ class BaseService:
 		:param lines:
 		:return:
 		"""
-		subprocess.run(['journalctl', '-u', self.service, '-n', str(lines), '--no-pager'])
+		subprocess.run(['journalctl', '-qu', self.service, '-n', str(lines), '--no-pager'])
 
 	def get_logs(self, lines: int = 20) -> str:
 		"""
@@ -1755,7 +1755,7 @@ class BaseService:
 		:return:
 		"""
 		return subprocess.run(
-			['journalctl', '-u', self.service, '-n', str(lines), '--no-pager'],
+			['journalctl', '-qu', self.service, '-n', str(lines), '--no-pager'],
 			stdout=subprocess.PIPE
 		).stdout.decode()
 
