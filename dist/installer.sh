@@ -1380,8 +1380,9 @@ fi
 if [ "$MODE" == "install" ]; then
 
 	if [ $SKIP_FIREWALL -eq 1 ]; then
+		echo "Firewall explictly disabled, skipping installation of a system firewall"
 		FIREWALL=0
-	elif [ $EXISTING -eq 0 ] && prompt_yn -q --default-yes "Install system firewall?"; then
+	elif prompt_yn -q --default-yes "Install system firewall?"; then
 		FIREWALL=1
 	else
 		FIREWALL=0
