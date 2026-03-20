@@ -86,7 +86,7 @@ class GameApp(SteamApp):
 	def post_update(self):
 		# VEIN requires the Steam client binary to be loaded into the game server
 		src = os.path.join(self.get_home_directory(), '.steam', 'steam', 'steamcmd', 'linux64', 'steamclient.so')
-		dst = os.path.join(self.get_app_directory(), 'Vein', 'Binaries', 'Linux', 'steamclient.so')
+		dst = os.path.join(self.get_app_directory(), 'AppFiles', 'Vein', 'Binaries', 'Linux', 'steamclient.so')
 		if not os.path.exists(dst):
 			logging.info('Copying Steam client library to game directory for VEIN...')
 			shutil.copy2(src, dst)
