@@ -30,8 +30,10 @@
 #   OVERRIDE_DIR=--dir=<path> - Use a custom installation directory instead of the default (optional)
 #   SKIP_FIREWALL=--skip-firewall - Do not install or configure a system firewall
 #   NONINTERACTIVE=--non-interactive - Run the installer in non-interactive mode (useful for scripted installs)
+#   BRANCH=--branch=<str> - Use a specific branch of the management script repository DEFAULT=main
 #
 # Changelog:
+#   20260319 - Update boilerplate script for v2 of the API
 #   20251103 - New installer
 
 ############################################
@@ -39,7 +41,7 @@
 ############################################
 
 # Name of the game (used to create the directory)
-INSTALLER_VERSION="v20251204"
+INSTALLER_VERSION="v20260319"
 GAME="VEIN"
 GAME_DESC="VEIN Dedicated Server"
 REPO="BitsNBytes25/VEIN-Dedicated-Server"
@@ -64,14 +66,14 @@ SAVE_DIR="/home/${GAME_USER}/.config/Epic/Vein/Saved/SaveGames/"
 # scriptlet:_common/package_install.sh
 # scriptlet:_common/firewall_allow.sh
 # scriptlet:_common/download.sh
+# scriptlet:_common/firewall_install.sh
 # scriptlet:bz_eval_tui/prompt_text.sh
 # scriptlet:bz_eval_tui/prompt_yn.sh
 # scriptlet:bz_eval_tui/print_header.sh
 # scriptlet:steam/install-steamcmd.sh
-# scriptlet:ufw/install.sh
 # scriptlet:warlock/install_warlock_manager.sh
 
-print_header "$GAME_DESC *unofficial* Installer"
+print_header "$GAME_DESC *unofficial* Installer ${INSTALLER_VERSION}"
 
 ############################################
 ## Installer Actions
@@ -98,62 +100,35 @@ function install_application() {
 		useradd -m -U $GAME_USER
 	fi
 
+	# Ensure the target directory exists and is owned by the game user
+	if [ ! -d "$GAME_DIR" ]; then
+		mkdir -p "$GAME_DIR"
+		chown $GAME_USER:$GAME_USER "$GAME_DIR"
+	fi
+
 	# Preliminary requirements
 	# VEIN needs ALSA and PulseAudio libraries to run
 	package_install curl sudo libasound2-data libpulse0 python3-venv libatomic1
 
 	if [ "$FIREWALL" == "1" ]; then
 		if [ "$(get_enabled_firewall)" == "none" ]; then
-			# No firewall installed, go ahead and install UFW
-			install_ufw
+			# No firewall installed, go ahead and install the system default firewall
+			firewall_install
 		fi
 	fi
 
 	[ -e "$GAME_DIR/AppFiles" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/AppFiles"
+	[ -e "$GAME_DIR/Environments" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/Environments"
+	[ -L "$GAME_DIR/SaveGames" ] || sudo -u $GAME_USER ln -s "$SAVE_DIR" "$GAME_DIR/AppFiles/SaveGames"
 
 	# Install steam binary and steamcmd
 	install_steamcmd
 
 	# Install the management script
-	install_warlock_manager "$REPO"
-
-	# Use the management script to install the game server
-	if ! $GAME_DIR/manage.py --update; then
-		echo "Could not install $GAME_DESC, exiting" >&2
-		exit 1
-	fi
-
-	# VEIN requires the Steam client binary to be loaded into the game server
-	[ -h "$GAME_DIR/AppFiles/Vein/Binaries/Linux/steamclient.so" ] || \
-		sudo -u $GAME_USER \
-		ln -s /home/$GAME_USER/.steam/steam/steamcmd/linux64/steamclient.so "$GAME_DIR/AppFiles/Vein/Binaries/Linux/steamclient.so"
-
-	# Install system service file to be loaded by systemd
-    cat > /etc/systemd/system/${GAME_SERVICE}.service <<EOF
-# script:systemd-template.service
-EOF
-    systemctl daemon-reload
-    systemctl enable $GAME_SERVICE
+	install_warlock_manager "$REPO" "$BRANCH" "main"
 
     # Ensure necessary directories exist
     [ -d "$SAVE_DIR" ] || sudo -u $GAME_USER mkdir -p "$SAVE_DIR"
-
-    # Ensure game configurations exist, (for convenience)
-    [ -e "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer" ] || \
-    	sudo -u $GAME_USER mkdir -p "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer"
-	[ -e "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/Game.ini" ] || \
-		sudo -u $GAME_USER touch "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/Game.ini"
-	[ -e "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/GameUserSettings.ini" ] || \
-		sudo -u $GAME_USER touch "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/GameUserSettings.ini"
-
-	# Symlink for convenience
-	[ -h "$GAME_DIR/Game.ini" ] || \
-		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/Game.ini" "$GAME_DIR/Game.ini"
-	[ -h "$GAME_DIR/GameUserSettings.ini" ] || \
-		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/Config/LinuxServer/GameUserSettings.ini" "$GAME_DIR/GameUserSettings.ini"
-	[ -h "$GAME_DIR/SaveGames" ] || sudo -u $GAME_USER ln -s "$SAVE_DIR" "$GAME_DIR/SaveGames"
-	[ -h "$GAME_DIR/Vein.log" ] || \
-		sudo -u $GAME_USER ln -s "$GAME_DIR/AppFiles/Vein/Saved/Logs/Vein.log" "$GAME_DIR/Vein.log"
 
 	if [ -n "$WARLOCK_GUID" ]; then
 		# Register Warlock
@@ -166,7 +141,7 @@ function postinstall() {
 	print_header "Performing postinstall"
 
 	# First run setup
-	$GAME_DIR/manage.py --first-run
+	$GAME_DIR/manage.py first-run
 }
 
 ##
@@ -180,23 +155,16 @@ function postinstall() {
 function uninstall_application() {
 	print_header "Performing uninstall_application"
 
-	systemctl disable $GAME_SERVICE
-	systemctl stop $GAME_SERVICE
-
-	# Save directory, (usually outside of GAME_DIR)
-	[ -n "$SAVE_DIR" -a -d "$SAVE_DIR" ] && rm -fr "$SAVE_DIR"
-
-	# Symlinks
-	[ -h "$GAME_DIR/Game.ini" ] && unlink "$GAME_DIR/Game.ini"
-	[ -h "$GAME_DIR/GameUserSettings.ini" ] && unlink "$GAME_DIR/GameUserSettings.ini"
-	[ -h "$GAME_DIR/SaveGames" ] && unlink "$GAME_DIR/SaveGames"
-	[ -h "$GAME_DIR/Vein.log" ] && unlink "$GAME_DIR/Vein.log"
-
-	# Service files
-	[ -e "/etc/systemd/system/${GAME_SERVICE}.service" ] && rm "/etc/systemd/system/${GAME_SERVICE}.service"
+	for envfile in "$GAME_DIR/Environments/"*.env; do
+		SERVICE="$(basename "$envfile" .env)"
+		if [ "$SERVICE" != "*" ]; then
+			$GAME_DIR/manage.py remove-service --service "$SERVICE"
+		fi
+	done
 
 	# Game files
 	[ -d "$GAME_DIR" ] && rm -rf "$GAME_DIR/AppFiles"
+	[ -d "$GAME_DIR/Environments" ] && rm -rf "$GAME_DIR/Environments"
 
 	# Management scripts
 	[ -e "$GAME_DIR/manage.py" ] && rm "$GAME_DIR/manage.py"
@@ -215,17 +183,30 @@ function uninstall_application() {
 
 if [ $MODE_UNINSTALL -eq 1 ]; then
 	MODE="uninstall"
+elif [ -e "$GAME_DIR/AppFiles" ]; then
+	MODE="reinstall"
 else
 	# Default to install mode
 	MODE="install"
 fi
 
 
-if systemctl -q is-active $GAME_SERVICE; then
-	echo "$GAME_DESC service is currently running, please stop it before running this installer."
-	echo "You can do this with: sudo systemctl stop $GAME_SERVICE"
-	exit 1
+if [ -e "$GAME_DIR/Environments" ]; then
+	# Check for existing service files to determine if the service is running.
+	# This is important to prevent conflicts with the installer trying to modify files while the service is running.
+	for envfile in "$GAME_DIR/Environments/"*.env; do
+		SERVICE=$(basename "$envfile" .env)
+		# If there are no services, this will just be '*.env'.
+		if [ "$SERVICE" != "*" ]; then
+			if systemctl -q is-active $SERVICE; then
+				echo "$GAME_DESC service is currently running, please stop all instances before running this installer."
+				echo "You can do this with: sudo systemctl stop $SERVICE"
+				exit 1
+			fi
+		fi
+	done
 fi
+
 
 if [ -n "$OVERRIDE_DIR" ]; then
 	# User requested to change the install dir!
@@ -250,11 +231,6 @@ else
 	echo "Using default installation directory of ${GAME_DIR}"
 fi
 
-if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
-	EXISTING=1
-else
-	EXISTING=0
-fi
 
 ############################################
 ## Installer
@@ -277,15 +253,21 @@ if [ "$MODE" == "install" ]; then
 
 	# Print some instructions and useful tips
     print_header "$GAME_DESC Installation Complete"
-    echo 'Game server will auto-update on restarts and will auto-start on server boot.'
-    echo ''
-    echo "Game files:     $GAME_DIR/AppFiles/"
-    echo "Game settings:  $GAME_DIR/Game.ini"
-    echo "GUS settings:   $GAME_DIR/GameUserSettings.ini"
-    echo "Log:            $GAME_DIR/Vein.log"
-    echo ''
-    echo "Next steps: configure your server by running"
-    echo "sudo $GAME_DIR/manage.py"
+fi
+
+# Operations needed to be performed during a reinstallation / upgrade
+if [ "$MODE" == "reinstall" ]; then
+
+	FIREWALL=0
+
+	upgrade_application
+
+	install_application
+
+	postinstall
+
+	# Print some instructions and useful tips
+    print_header "$GAME_DESC Installation Complete"
 fi
 
 if [ "$MODE" == "uninstall" ]; then
@@ -299,7 +281,7 @@ if [ "$MODE" == "uninstall" ]; then
 	fi
 
 	if prompt_yn -q --default-yes "Perform a backup before everything is wiped?"; then
-		$GAME_DIR/manage.py --backup
+		$GAME_DIR/manage.py backup
 	fi
 
 	uninstall_application

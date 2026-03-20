@@ -1,21 +1,43 @@
 #!/usr/bin/env python3
-import pwd
-from scriptlets._common.firewall_allow import *
-from scriptlets._common.firewall_remove import *
-from scriptlets.bz_eval_tui.prompt_yn import *
-from scriptlets.bz_eval_tui.prompt_text import *
-from scriptlets.bz_eval_tui.table import *
-from scriptlets.bz_eval_tui.print_header import *
-from scriptlets._common.get_wan_ip import *
+import os
+
+# To allow running as a standalone script without installing the package, include the venv path for imports.
+# This will set the include path for this path to .venv to allow packages installed therein to be utilized.
+#
+# IMPORTANT - any imports that are needed for the script to run must be after this,
+# otherwise the imports will fail when running as a standalone script.
 # import:org_python/venv_path_include.py
-from scriptlets.warlock.steam_app import *
-from scriptlets.warlock.http_service import *
-from scriptlets.warlock.ini_config import *
-from scriptlets.warlock.unreal_config import *
-from scriptlets.warlock.default_run import *
 
+import logging
+import shutil
+import subprocess
 
-here = os.path.dirname(os.path.realpath(__file__))
+# Import the appropriate type of handler for the game installer.
+# Common options are:
+# from warlock_manager.apps.base_app import BaseApp
+from warlock_manager.apps.steam_app import SteamApp
+
+# Import the appropriate type of handler for the game services.
+# Common options are:
+# from warlock_manager.services.base_service import BaseService
+# from warlock_manager.services.rcon_service import RCONService
+# from warlock_manager.services.socket_service import SocketService
+from warlock_manager.services.http_service import HTTPService
+
+# Import the various configuration handlers used by this game.
+# Common options are:
+# from warlock_manager.config.cli_config import CLIConfig
+from warlock_manager.config.ini_config import INIConfig
+# from warlock_manager.config.json_config import JSONConfig
+# from warlock_manager.config.properties_config import PropertiesConfig
+from warlock_manager.config.unreal_config import UnrealConfig
+
+# Load the application runner responsible for interfacing with CLI arguments
+# and providing default functionality for running the manager.
+from warlock_manager.libs.app_runner import app_runner
+
+# If your script manages the firewall, (recommended), import the Firewall library
+from warlock_manager.libs.firewall import Firewall
 
 
 class GameApp(SteamApp):
@@ -29,39 +51,46 @@ class GameApp(SteamApp):
 		self.name = 'VEIN'
 		self.desc = 'VEIN Dedicated Server'
 		self.steam_id = '2131400'
-		self.services = ('vein-server',)
+		self.service_handler = GameService
 
 		self.configs = {
-			'manager': INIConfig('manager', os.path.join(here, '.settings.ini'))
+			'manager': INIConfig('manager', os.path.join(self.get_app_directory(), '.settings.ini'))
 		}
 		self.load()
 
 		self.steam_branch = self.get_option_value('Steam Branch')
 
-	def get_save_directory(self) -> Union[str, None]:
+	def first_run(self) -> bool:
 		"""
-		Get the save directory for the game server
-
-		VEIN uses the default Epic save handler which stores saves in ~/.config
+		Perform any first-run configuration needed for this game
 
 		:return:
 		"""
-		uid = os.stat(here).st_uid
-		return '%s/.config/Epic/Vein/Saved/SaveGames/' % pwd.getpwuid(uid).pw_dir
+		if os.geteuid() != 0:
+			logging.error('Please run this script with sudo to perform first-run configuration.')
+			return False
 
-	def get_save_files(self) -> Union[list, None]:
-		"""
-		Get a list of save files / directories for the game server
+		# Install the game with Steam.
+		# It's a good idea to ensure the game is installed on first run.
+		self.update()
 
-		:return:
-		"""
-		save_dir = self.get_save_directory()
-		files = []
-		for f in os.listdir(save_dir):
-			src = os.path.join(save_dir, f)
-			if not os.path.isdir(src):
-				files.append(f)
-		return files
+		# First run is a great time to auto-create some services for this game too
+		services = self.get_services()
+		if len(services) == 0:
+			# No services detected, create one.
+			logging.info('No services detected, creating one...')
+			self.create_service('vein-server')
+		else:
+			logging.info('Detected %d services, skipping first-run service creation.' % len(services))
+
+	def post_update(self):
+		# VEIN requires the Steam client binary to be loaded into the game server
+		src = os.path.join(self.get_home_directory(), '.steam', 'steam', 'steamcmd', 'linux64', 'steamclient.so')
+		dst = os.path.join(self.get_app_directory(), 'Vein', 'Binaries', 'Linux', 'steamclient.so')
+		if not os.path.exists(dst):
+			logging.info('Copying Steam client library to game directory for VEIN...')
+			shutil.copy2(src, dst)
+			self.ensure_file_ownership(dst)
 
 
 class GameService(HTTPService):
@@ -74,12 +103,10 @@ class GameService(HTTPService):
 		:param file:
 		"""
 		super().__init__(service, game)
-		self.service = service
-		self.game = game
 		self.configs = {
-			'game': UnrealConfig('game', os.path.join(here, 'AppFiles/Vein/Saved/Config/LinuxServer/Game.ini')),
-			'gus': UnrealConfig('gus', os.path.join(here, 'AppFiles/Vein/Saved/Config/LinuxServer/GameUserSettings.ini')),
-			'engine': UnrealConfig('engine', os.path.join(here, 'AppFiles/Vein/Saved/Config/LinuxServer/Engine.ini'))
+			'game': UnrealConfig('game', os.path.join(self.get_app_directory(), 'Vein/Saved/Config/LinuxServer/Game.ini')),
+			'gus': UnrealConfig('gus', os.path.join(self.get_app_directory(), 'Vein/Saved/Config/LinuxServer/GameUserSettings.ini')),
+			'engine': UnrealConfig('engine', os.path.join(self.get_app_directory(), 'Vein/Saved/Config/LinuxServer/Engine.ini'))
 		}
 		self.load()
 
@@ -96,13 +123,13 @@ class GameService(HTTPService):
 		if option == 'GamePort':
 			# Update firewall for game port change
 			if previous_value:
-				firewall_remove(int(previous_value), 'udp')
-			firewall_allow(int(new_value), 'udp', 'Allow %s game port' % self.game.desc)
+				Firewall.remove(int(previous_value), 'udp')
+			Firewall.allow(int(new_value), 'udp', '%s game port' % self.game.desc)
 		elif option == 'SteamQueryPort':
 			# Update firewall for game port change
 			if previous_value:
-				firewall_remove(int(previous_value), 'udp')
-			firewall_allow(int(new_value), 'udp', 'Allow %s Steam query port' % self.game.desc)
+				Firewall.remove(int(previous_value), 'udp')
+			Firewall.allow(int(new_value), 'udp', '%s Steam query port' % self.game.desc)
 
 	def is_api_enabled(self) -> bool:
 		"""
@@ -118,7 +145,7 @@ class GameService(HTTPService):
 		"""
 		return self.get_option_value('APIPort')
 
-	def get_players(self) -> Union[list, None]:
+	def get_players(self) -> list | None:
 		"""
 		Get the current players on the server, or None if the API is unavailable
 		:return:
@@ -129,7 +156,7 @@ class GameService(HTTPService):
 		else:
 			return ret['players']
 
-	def get_player_count(self) -> Union[int, None]:
+	def get_player_count(self) -> int | None:
 		"""
 		Get the current player count on the server, or None if the API is unavailable
 		:return:
@@ -147,7 +174,7 @@ class GameService(HTTPService):
 		"""
 		return self.get_option_value('MaxPlayers')
 
-	def get_status(self) -> Union[dict, None]:
+	def get_status(self) -> dict | None:
 		"""
 		Get the current server status from the API, or None if the API is unavailable
 
@@ -165,7 +192,7 @@ class GameService(HTTPService):
 		"""
 		return self._api_cmd('/status')
 
-	def get_weather(self) -> Union[dict, None]:
+	def get_weather(self) -> dict | None:
 		"""
 		Get the current weather from the API, or None if the API is unavailable
 
@@ -190,7 +217,7 @@ class GameService(HTTPService):
 		"""
 		return self.get_option_value('ServerName')
 
-	def get_port(self) -> Union[int, None]:
+	def get_port(self) -> int | None:
 		"""
 		Get the primary port of the service, or None if not applicable
 		:return:
@@ -208,7 +235,7 @@ class GameService(HTTPService):
 		processes = subprocess.run([
 			'ps', 'axh', '-o', 'pid,cmd'
 		], stdout=subprocess.PIPE).stdout.decode().strip()
-		exe = os.path.join(here, 'AppFiles/Vein/Binaries/Linux/VeinServer-Linux-')
+		exe = os.path.join(self.get_app_directory(), 'Vein/Binaries/Linux/VeinServer-Linux-')
 		for line in processes.split('\n'):
 			pid, cmd = line.strip().split(' ', 1)
 			if cmd.startswith(exe):
@@ -237,31 +264,15 @@ class GameService(HTTPService):
 			('SteamQueryPort', 'udp', '%s Steam query port' % self.game.desc)
 		]
 
+	def create_service(self):
+		super().create_service()
 
-def menu_first_run(game: GameApp):
-	"""
-	Perform first-run configuration for setting up the game server initially
+		self.set_option('ServerName', 'My VEIN Server')
+		self.set_option('GamePort', '7777')
+		self.set_option('SteamQueryPort', '27015')
+		self.set_option('APIPort', '8080')
 
-	:param game:
-	:return:
-	"""
-	print_header('First Run Configuration')
-
-	if os.geteuid() != 0:
-		print('ERROR: Please run this script with sudo to perform first-run configuration.')
-		sys.exit(1)
-
-	svc = game.get_services()[0]
-
-	if not svc.option_has_value('ServerName'):
-		svc.set_option('ServerName', 'My VEIN Server')
-	if not svc.option_has_value('GamePort'):
-		svc.set_option('GamePort', '7777')
-	if not svc.option_has_value('SteamQueryPort'):
-		svc.set_option('SteamQueryPort', '27015')
-	if not svc.option_has_value('APIPort'):
-		svc.set_option('APIPort', '8080')
 
 if __name__ == '__main__':
-	game = GameApp()
-	run_manager(game)
+	app = app_runner(GameApp())
+	app()
