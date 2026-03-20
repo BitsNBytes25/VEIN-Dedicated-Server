@@ -130,6 +130,11 @@ function install_application() {
     # Ensure necessary directories exist
     [ -d "$SAVE_DIR" ] || sudo -u $GAME_USER mkdir -p "$SAVE_DIR"
 
+    # Install installer (this script) for uninstallation or manual work
+	download "https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/dist/installer.sh" "$GAME_DIR/installer.sh"
+	chmod +x "$GAME_DIR/installer.sh"
+	chown $GAME_USER:$GAME_USER "$GAME_DIR/installer.sh"
+
 	if [ -n "$WARLOCK_GUID" ]; then
 		# Register Warlock
 		[ -d "/var/lib/warlock" ] || mkdir -p "/var/lib/warlock"
