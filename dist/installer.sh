@@ -1024,19 +1024,27 @@ function install_steamcmd() {
 #   GAME_USER    - User account to install the game under
 #   GAME_DIR     - Directory to install the game into
 #
-# @param $1 Repo Name (e.g., user/repo)
-# @param $2 Branch Name (default: main)
+# @param $1 Application Repo Name (e.g., user/repo)
+# @param $2 Application Branch Name (default: main)
+# @param $3 Warlock Manager Branch to use (default: release-v2)
 #
 # CHANGELOG:
+#   20260319 - Add third option to specify the version of Warlock Manager to use as the base
 #   20260301 - Update to install warlock-manager from github (along with its dependencies) as a pip package
 #
 function install_warlock_manager() {
 	print_header "Performing install_management"
 
 	# Install management console and its dependencies
+
+	# Source URL to download the application from
 	local SRC=""
+	# Github repository of the source application
 	local REPO="$1"
+	# Branch of the source application to download from (default: main)
 	local BRANCH="${2:-main}"
+	# Branch of Warlock Manager to install (default: release-v2)
+	local MANAGER_BRANCH="${3:-release-v2}"
 
 	SRC="https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/dist/manage.py"
 
@@ -1209,7 +1217,7 @@ EOF
 	# A python virtual environment is now required by Warlock-based managers.
 	sudo -u $GAME_USER python3 -m venv "$GAME_DIR/.venv"
 	sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install --upgrade pip
-	sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install warlock-manager@git+https://github.com/BitsNBytes25/Warlock-Manager.git@release-v2
+	sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install warlock-manager@git+https://github.com/BitsNBytes25/Warlock-Manager.git@$MANAGER_BRANCH
 }
 
 
