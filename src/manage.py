@@ -53,6 +53,8 @@ class GameApp(SteamApp):
 		self.steam_id = '2131400'
 		self.service_handler = GameService
 		self.service_prefix = 'vein-'
+		# VEIN currently only supports a single instance
+		self.disabled_features = {'create_service'}
 
 		self.configs = {
 			'manager': INIConfig('manager', os.path.join(self.get_app_directory(), '.settings.ini'))
@@ -70,6 +72,8 @@ class GameApp(SteamApp):
 		if os.geteuid() != 0:
 			logging.error('Please run this script with sudo to perform first-run configuration.')
 			return False
+
+		super().first_run()
 
 		# Install the game with Steam.
 		# It's a good idea to ensure the game is installed on first run.

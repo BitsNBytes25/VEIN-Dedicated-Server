@@ -117,8 +117,6 @@ function install_application() {
 		fi
 	fi
 
-	[ -e "$GAME_DIR/AppFiles" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/AppFiles"
-	[ -e "$GAME_DIR/Environments" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/Environments"
 	[ -L "$GAME_DIR/AppFiles/SaveGames" ] || sudo -u $GAME_USER ln -s "$SAVE_DIR" "$GAME_DIR/AppFiles/SaveGames"
 
 	# Install steam binary and steamcmd
@@ -160,16 +158,7 @@ function postinstall() {
 function uninstall_application() {
 	print_header "Performing uninstall_application"
 
-	for envfile in "$GAME_DIR/Environments/"*.env; do
-		SERVICE="$(basename "$envfile" .env)"
-		if [ "$SERVICE" != "*" ]; then
-			$GAME_DIR/manage.py remove-service --service "$SERVICE"
-		fi
-	done
-
-	# Game files
-	[ -d "$GAME_DIR" ] && rm -rf "$GAME_DIR/AppFiles"
-	[ -d "$GAME_DIR/Environments" ] && rm -rf "$GAME_DIR/Environments"
+	$GAME_DIR/manage.py remove --confirm
 
 	# Management scripts
 	[ -e "$GAME_DIR/manage.py" ] && rm "$GAME_DIR/manage.py"
