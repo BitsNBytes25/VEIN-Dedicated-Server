@@ -42,7 +42,7 @@ This script will:
 The following command will download and run the installer script as root using defaults:
 
 ```bash
-sudo su -c "bash <(curl -s https://raw.githubusercontent.com/BitsNBytes25/VEIN-Dedicated-Server/master/dist/installer.sh)" root
+sudo su -c "bash <(curl -s https://raw.githubusercontent.com/BitsNBytes25/VEIN-Dedicated-Server/main/dist/installer.sh)" root
 ```
 
 Note, if on Debian you may need to install sudo and curl first:
@@ -56,8 +56,6 @@ apt install -y sudo curl
 
 Because it's managed with systemd, standardized commands are used for managing the server.
 This includes an auto-restart for the game server if it crashes.
-
-By default, VEIN Dedicated Server will **automatically start at boot**!
 
 A management console (manage.py) is included for managing, monitoring, and administrating the game server.
 
@@ -97,7 +95,7 @@ Once installed and running, your server should appear in the server browser auto
 └── Vein.log                   # Game log file
 ```
 
-
+<!--
 ## Managing your Server (Easy Method)
 
 Once installed, run `sudo /home/steam/VEIN/manage.py` to access the management console:
@@ -131,6 +129,7 @@ Configure: [1-8], [P]layer messages
 
 The main screen of the management UI shows some basic info and common options.
 
+
 ### Stopping / Starting
 
 From the main menu overview, the options `s` and `t` respectively
@@ -146,23 +145,25 @@ _As soon as the API for notifications is released..._
 
 The server will automatically run Steam update on startup.
 
+-->
+
 ## Backups and Migrations
 
-To backup your server, you can run the management interface with `--backup` as an option.
-to create a tarball of your game data and configuration in `/home/steam/VEIN/backups/`.
+To backup your server, you can run the management interface with `backup` as an option.
+to create a tarball of your game data and configuration in `/home/steam/VEIN/Backups/`.
 
 ```bash
-sudo /home/steam/VEIN/manage.py --backup
+sudo /home/steam/VEIN/manage.py backup
 ```
 
 If necessary, you can view these backups with any archive manage which supports GZIP.
 
 To migrate this game data to another server running this system, you can copy that tarball to
-`/home/steam/VEIN/backups/` (or somewhere that makes sense to you),
+`/home/steam/VEIN/Backups/` (or somewhere that makes sense to you),
 and run:
 
 ```bash
-sudo /home/steam/VEIN/manage.py --restore backups/vein-server-backup-20250505-184633.tar.gz
+sudo /home/steam/VEIN/manage.py restore vein-server-backup-20250505-184633.tar.gz
 ```
 
 ## Accessing Files
@@ -177,6 +178,7 @@ to start/stop the server.  Accessing the files however should be done with the `
 
 * [Scripts Collection compiler by eVAL](https://github.com/eVAL-Agency/ScriptsCollection) (AGPLv3)
 * [SteamCMD by Valve](https://developer.valvesoftware.com/wiki/SteamCMD)
+* [Warlock Game Manager](https://github.com/BitsNBytes25/Warlock-Manager)
 * curl
 * sudo
 * systemd

@@ -79,7 +79,6 @@ print_header "$GAME_DESC *unofficial* Installer ${INSTALLER_VERSION}"
 #   GAME_USER    - User account to install the game under
 #   GAME_DIR     - Directory to install the game into
 #   GAME_DESC    - Description of the game (for logging purposes)
-#   SAVE_DIR     - Directory to store game save files
 #
 function install_application() {
 	print_header "Performing install_application"
@@ -108,16 +107,11 @@ function install_application() {
 		fi
 	fi
 
-	[ -L "$GAME_DIR/AppFiles/SaveGames" ] || sudo -u $GAME_USER ln -s "$SAVE_DIR" "$GAME_DIR/AppFiles/SaveGames"
-
 	# Install steam binary and steamcmd
 	install_steamcmd
 
 	# Install the management script
-	install_warlock_manager "$REPO" "$BRANCH" "main"
-
-    # Ensure necessary directories exist
-    [ -d "$SAVE_DIR" ] || sudo -u $GAME_USER mkdir -p "$SAVE_DIR"
+	install_warlock_manager "$REPO" "$BRANCH" "release-v2"
 
     # Install installer (this script) for uninstallation or manual work
 	download "https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/dist/installer.sh" "$GAME_DIR/installer.sh"
@@ -143,7 +137,6 @@ function postinstall() {
 #
 # Expects the following variables:
 #   GAME_DIR     - Directory where the game is installed
-#   SAVE_DIR     - Directory where game save files are stored
 #
 function uninstall_application() {
 	print_header "Performing uninstall_application"
