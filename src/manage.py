@@ -54,7 +54,7 @@ class GameApp(SteamApp):
 		self.service_handler = GameService
 		self.service_prefix = 'vein-'
 		# VEIN currently only supports a single instance
-		self.disabled_features = {'create_service'}
+		self.disabled_features = {'create_service', 'cmd'}
 
 		self.configs = {
 			'manager': INIConfig('manager', os.path.join(self.get_app_directory(), '.settings.ini'))
@@ -240,17 +240,7 @@ class GameService(HTTPService):
 		:return:
 		"""
 
-		# There's no quick way to get the game process PID from systemd,
-		# so use ps to find the process based on the map name
-		processes = subprocess.run([
-			'ps', 'axh', '-o', 'pid,cmd'
-		], stdout=subprocess.PIPE).stdout.decode().strip()
-		exe = os.path.join(self.get_app_directory(), 'Vein/Binaries/Linux/VeinServer-Linux-')
-		for line in processes.split('\n'):
-			pid, cmd = line.strip().split(' ', 1)
-			if cmd.startswith(exe):
-				return int(line.strip().split(' ')[0])
-		return 0
+		return self.get_pid()
 
 	def send_message(self, message: str):
 		"""
@@ -281,6 +271,21 @@ class GameService(HTTPService):
 		self.set_option('GamePort', '7777')
 		self.set_option('SteamQueryPort', '27015')
 		self.set_option('APIPort', '8080')
+
+	def get_save_files(self) -> list | None:
+		"""
+		Get the list of supplemental files or directories for this game, or None if not applicable
+
+		This list of files **should not** be fully resolved, and will use `self.get_save_directory()` as the base path.
+		For example, to return `AppFiles/SaveData` and `AppFiles/Config`:
+
+		```python
+		return ['SaveData', 'Config']
+		```
+
+		:return:
+		"""
+		return ['Vein/Saved/SaveGames/Server.vns']
 
 
 if __name__ == '__main__':

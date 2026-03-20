@@ -46,18 +46,11 @@ GAME="VEIN"
 GAME_DESC="VEIN Dedicated Server"
 REPO="BitsNBytes25/VEIN-Dedicated-Server"
 WARLOCK_GUID="acdf1bec-2906-c20f-5a59-b0df072c29e8"
-# Steam ID of the game
-STEAM_ID="2131400"
 GAME_USER="steam"
 GAME_DIR="/home/${GAME_USER}/${GAME}"
-GAME_SERVICE="vein-server"
 # Force installation directory for game
 # steam produces varying results, sometimes in ~/.local/share/Steam, other times in ~/Steam
 STEAM_DIR="/home/${GAME_USER}/.local/share/Steam"
-# VEIN uses the default Epic save handler which stores saves in ~/.config
-SAVE_DIR="/home/${GAME_USER}/.config/Epic/Vein/Saved/SaveGames/"
-#PORT_GAME=7777
-#PORT_QUERY=27015
 
 # compile:usage
 # compile:argparse
@@ -85,9 +78,7 @@ print_header "$GAME_DESC *unofficial* Installer ${INSTALLER_VERSION}"
 # Expects the following variables:
 #   GAME_USER    - User account to install the game under
 #   GAME_DIR     - Directory to install the game into
-#   STEAM_ID     - Steam App ID of the game
 #   GAME_DESC    - Description of the game (for logging purposes)
-#   GAME_SERVICE - Service name to install with Systemd
 #   SAVE_DIR     - Directory to store game save files
 #
 function install_application() {
@@ -152,7 +143,6 @@ function postinstall() {
 #
 # Expects the following variables:
 #   GAME_DIR     - Directory where the game is installed
-#   GAME_SERVICE - Service name used with Systemd
 #   SAVE_DIR     - Directory where game save files are stored
 #
 function uninstall_application() {
