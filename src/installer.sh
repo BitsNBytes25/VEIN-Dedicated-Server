@@ -119,7 +119,7 @@ function install_application() {
 
 	[ -e "$GAME_DIR/AppFiles" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/AppFiles"
 	[ -e "$GAME_DIR/Environments" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/Environments"
-	[ -L "$GAME_DIR/SaveGames" ] || sudo -u $GAME_USER ln -s "$SAVE_DIR" "$GAME_DIR/AppFiles/SaveGames"
+	[ -L "$GAME_DIR/AppFiles/SaveGames" ] || sudo -u $GAME_USER ln -s "$SAVE_DIR" "$GAME_DIR/AppFiles/SaveGames"
 
 	# Install steam binary and steamcmd
 	install_steamcmd

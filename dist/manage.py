@@ -106,6 +106,8 @@ class GameApp(SteamApp):
 			shutil.copy2(src, dst)
 			self.ensure_file_ownership(dst)
 
+		os.chmod(os.path.join(self.get_app_directory(), 'AppFiles/Vein/Binaries/Linux/VeinServer-Linux-Test'), 0o755)
+
 
 class GameService(HTTPService):
 	"""
@@ -123,6 +125,9 @@ class GameService(HTTPService):
 			'engine': UnrealConfig('engine', os.path.join(self.get_app_directory(), 'Vein/Saved/Config/LinuxServer/Engine.ini'))
 		}
 		self.load()
+
+	def get_executable(self) -> str:
+		return os.path.join(self.get_app_directory(), 'Vein/Binaries/Linux/VeinServer-Linux-Test') + ' Vein'
 
 	def option_value_updated(self, option: str, previous_value, new_value):
 		"""
