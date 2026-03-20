@@ -65,6 +65,7 @@ class GameApp(SteamApp):
 		self.desc = 'VEIN Dedicated Server'
 		self.steam_id = '2131400'
 		self.service_handler = GameService
+		self.service_prefix = 'vein-'
 
 		self.configs = {
 			'manager': INIConfig('manager', os.path.join(self.get_app_directory(), '.settings.ini'))
