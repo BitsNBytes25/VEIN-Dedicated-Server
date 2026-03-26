@@ -39,6 +39,9 @@ This script will:
 
 ## Quick Start
 
+To quickly get up and running with this installer, it's recommended to use
+the [Warlock Server Manager](https://github.com/BitsNBytes25/Warlock) to install and manage your server.
+
 The following command will download and run the installer script as root using defaults:
 
 ```bash
@@ -101,30 +104,28 @@ Once installed and running, your server should appear in the server browser auto
 Once installed, run `sudo /home/steam/VEIN/manage.py` to access the management console:
 
 ```
-================================================================================
-                  Welcome to the VEIN Dedicated Server Manager                  
-================================================================================
-Found an issue? https://github.com/BitsNBytes25/VEIN-Dedicated-Server/issues
-Want to help financially support this project? https://ko-fi.com/bitsandbytes
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                            Manage My VEIN Server                             │
+└──────────────────────────────────────────────────────────────────────────────┘
 
-            Status     s[T]op  ✅ Running              
-        Auto-Start  [D]isable  ✅ Enabled              
-      Memory Usage             8.97 GB                 
-         CPU Usage             111%                    
-           Players             0                       
-    Direct Connect             45.26.230.248:7777      
-            ------       ----  ---------------------   
-       Server Name    (opt 1)  BitsNBytes VEIN Test    
-              Port    (opt 2)  7777                    
-        API Access    (opt 3)  ✅ 8080                 
-     Join Password    (opt 4)  --No Password Required--
-       Max Players    (opt 5)  16                      
-        Query Port    (opt 6)  27015                   
-  Valve Anti Cheat    (opt 7)  False                   
-       PVP Enabled    (opt 8)  False                   
+             Status:       🛑 Stopped                                         
+         Auto-Start:       ❌ Disabled                                        
+          CPU Usage:       N/A                                                
+       Memory Usage:       N/A                                                
+            Players:       0 / 16                                             
+     Direct Connect:       45.26.230.225:7777                                 
+      VEIN API port:  [1]  8080 (TCP) ❌ Not Listening                        
+     VEIN game port:  [2]  7777 (UDP) ❌ Not Listening                        
+    VEIN query port:  [3]  27015 (UDP) ❌ Not Listening                       
+             Public:  [4]  True                                               
+  ServerDescription:  [5]  Short description of your server and your community
+         ServerName:  [6]  My VEIN Server                                     
+     ServerPassword:  [7]                                                     
 
-Control: [T/D], or [Q]uit to exit
-Configure: [1-8], [P]layer messages
+Configure: [1-7] | other [O]ptions
+Control: [S]tart | [E]nable
+Manage Data: [R]estore and Backup | [W]ipe
+or [B]ack to menu / [Q]uit to exit
 ```
 
 The main screen of the management UI shows some basic info and common options.

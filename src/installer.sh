@@ -33,6 +33,7 @@
 #   BRANCH=--branch=<str> - Use a specific branch of the management script repository DEFAULT=main
 #
 # Changelog:
+#   20260325 - Finish migration to 2.1.x
 #   20260319 - Update boilerplate script for v2 of the API
 #   20251103 - New installer
 
@@ -41,7 +42,7 @@
 ############################################
 
 # Name of the game (used to create the directory)
-INSTALLER_VERSION="v20260319"
+INSTALLER_VERSION="v20260325"
 GAME="VEIN"
 GAME_DESC="VEIN Dedicated Server"
 REPO="BitsNBytes25/VEIN-Dedicated-Server"
