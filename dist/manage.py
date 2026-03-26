@@ -17,13 +17,13 @@ sys.path.insert(
 )
 import logging
 import shutil
-import subprocess
 from warlock_manager.apps.steam_app import SteamApp
 from warlock_manager.services.http_service import HTTPService
 from warlock_manager.config.ini_config import INIConfig
 from warlock_manager.config.unreal_config import UnrealConfig
 from warlock_manager.libs.app_runner import app_runner
 from warlock_manager.libs.firewall import Firewall
+from warlock_manager.libs import utils
 # To allow running as a standalone script without installing the package, include the venv path for imports.
 # This will set the include path for this path to .venv to allow packages installed therein to be utilized.
 #
@@ -52,6 +52,8 @@ from warlock_manager.libs.firewall import Firewall
 
 # If your script manages the firewall, (recommended), import the Firewall library
 
+# Utilities provided by Warlock that are common to many applications
+
 
 class GameApp(SteamApp):
 	"""
@@ -67,10 +69,10 @@ class GameApp(SteamApp):
 		self.service_handler = GameService
 		self.service_prefix = 'vein-'
 		# VEIN currently only supports a single instance
-		self.disabled_features = {'create_service', 'cmd'}
+		self.disabled_features = {'create_service', 'cmd', 'mods'}
 
 		self.configs = {
-			'manager': INIConfig('manager', os.path.join(self.get_app_directory(), '.settings.ini'))
+			'manager': INIConfig('manager', os.path.join(utils.get_app_directory(), '.settings.ini'))
 		}
 		self.load()
 
@@ -101,16 +103,28 @@ class GameApp(SteamApp):
 		else:
 			logging.info('Detected %d services, skipping first-run service creation.' % len(services))
 
+		return True
+
+	def option_value_updated(self, option: str, previous_value, new_value):
+		if option == 'Steam Branch':
+			self.update()
+
+	def get_option_options(self, option: str):
+		if option == 'Steam Branch':
+			return self.get_steam_branches()
+		else:
+			return super().get_option_options(option)
+
 	def post_update(self):
 		# VEIN requires the Steam client binary to be loaded into the game server
-		src = os.path.join(self.get_home_directory(), '.steam', 'steam', 'steamcmd', 'linux64', 'steamclient.so')
-		dst = os.path.join(self.get_app_directory(), 'AppFiles', 'Vein', 'Binaries', 'Linux', 'steamclient.so')
+		src = os.path.join(utils.get_home_directory(), '.steam', 'steam', 'steamcmd', 'linux64', 'steamclient.so')
+		dst = os.path.join(utils.get_app_directory(), 'AppFiles', 'Vein', 'Binaries', 'Linux', 'steamclient.so')
 		if not os.path.exists(dst):
 			logging.info('Copying Steam client library to game directory for VEIN...')
 			shutil.copy2(src, dst)
-			self.ensure_file_ownership(dst)
+			utils.ensure_file_ownership(dst)
 
-		os.chmod(os.path.join(self.get_app_directory(), 'AppFiles/Vein/Binaries/Linux/VeinServer-Linux-Test'), 0o755)
+		os.chmod(os.path.join(utils.get_app_directory(), 'AppFiles/Vein/Binaries/Linux/VeinServer-Linux-Test'), 0o755)
 
 
 class GameService(HTTPService):
@@ -272,18 +286,15 @@ class GameService(HTTPService):
 		:return:
 		"""
 		return [
-			('APIPort', 'tcp', '%s API port' % self.game.desc),
-			('GamePort', 'udp', '%s game port' % self.game.desc),
-			('SteamQueryPort', 'udp', '%s Steam query port' % self.game.desc)
+			('APIPort', 'tcp', '%s API port' % self.game.name),
+			('GamePort', 'udp', '%s game port' % self.game.name),
+			('SteamQueryPort', 'udp', '%s query port' % self.game.name)
 		]
 
 	def create_service(self):
 		super().create_service()
 
 		self.set_option('ServerName', 'My VEIN Server')
-		self.set_option('GamePort', '7777')
-		self.set_option('SteamQueryPort', '27015')
-		self.set_option('APIPort', '8080')
 
 	def get_save_files(self) -> list | None:
 		"""

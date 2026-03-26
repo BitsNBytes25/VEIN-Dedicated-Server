@@ -2,7 +2,7 @@ game:
   - name: APIPort
     section: "/Script/Vein.VeinGameSession"
     key: HTTPPort
-    default: ""
+    default: "8080"
     type: int
     help: "The port for the server API. Leave blank to disable."
   - name: Public
@@ -11,12 +11,14 @@ game:
     default: "true"
     type: bool
     help: "Make the server publicly visible in server browsers."
+    group: Basic
   - name: GamePort
     section: URL
     key: Port
     default: "7777"
     type: int
     help: "The main port for game connections."
+    group: Basic
   - name: MaxPlayers
     section: "/Script/Engine.GameSession"
     key: MaxPlayers
@@ -29,18 +31,21 @@ game:
     default: "Short description of your server and your community"
     type: text
     help: "A brief description of your server that appears in server browsers."
+    group: Basic
   - name: ServerName
     section: "/Script/Vein.VeinGameSession"
     key: ServerName
     default: "My Vein Server"
     type: str
     help: "The name of your server as it appears in server browsers."
+    group: Basic
   - name: ServerPassword
     section: "/Script/Vein.VeinGameSession"
     key: Password
     default: ""
     type: str
     help: "Password required to join the server. Leave blank for no password."
+    group: Basic
   - name: SteamQueryPort
     section: OnlineSubsystemSteam
     key: GameServerQueryPort
@@ -73,9 +78,6 @@ manager:
     type: str
     default: public
     help: "The Steam branch to install the server from (e.g., stable, experimental)."
-    options:
-      - public
-      - experimental
   - name: Steam Branch Password
     section: Steam
     key: steam_branch_password

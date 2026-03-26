@@ -1022,6 +1022,7 @@ function install_steamcmd() {
 # @param $3 Warlock Manager Branch to use (default: release-v2)
 #
 # CHANGELOG:
+#   20260325 - Update to install warlock-manager from PyPI if a version number is specified instead of a branch name
 #   20260319 - Add third option to specify the version of Warlock Manager to use as the base
 #   20260301 - Update to install warlock-manager from github (along with its dependencies) as a pip package
 #
@@ -1038,6 +1039,15 @@ function install_warlock_manager() {
 	local BRANCH="${2:-main}"
 	# Branch of Warlock Manager to install (default: release-v2)
 	local MANAGER_BRANCH="${3:-release-v2}"
+	local MANAGER_SOURCE
+	local MANAGER_SHA
+
+	if [[ "$MANAGER_BRANCH" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        MANAGER_SOURCE="pip"
+        MANAGER_BRANCH=">=${MANAGER_BRANCH}.0,<=${MANAGER_BRANCH}.9999"
+    else
+        MANAGER_SOURCE="github"
+    fi
 
 	SRC="https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/dist/manage.py"
 
@@ -1049,13 +1059,32 @@ function install_warlock_manager() {
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/manage.py"
 	chmod +x "$GAME_DIR/manage.py"
 
+	# Record the hash of the install and branch name for display in the management UI and checking for updates.
+	# We use the direct hash because installation scripts may not necessarily use tagged versions.
+	MANAGER_SHA="$(curl -s "https://api.github.com/repos/${REPO}/commits/${BRANCH}" \
+        | grep '"sha":' \
+        | head -n 1 \
+        | sed -E 's/.*"sha": *"([^"]+)".*/\1/')"
+
+	# Record this hash along with the branch into a file accessible by the manager.
+	# This will be read by the Python, so JSON is fine.
+	cat > "$GAME_DIR/.manage.json" <<EOF
+{
+	"source": "github",
+	"repo": "${REPO}",
+	"branch": "${BRANCH}",
+	"commit": "${MANAGER_SHA}"
+}
+EOF
+	chown $GAME_USER:$GAME_USER "$GAME_DIR/.manage.json"
+
 	# Install configuration definitions
 	cat > "$GAME_DIR/configs.yaml" <<EOF
 game:
   - name: APIPort
     section: "/Script/Vein.VeinGameSession"
     key: HTTPPort
-    default: ""
+    default: "8080"
     type: int
     help: "The port for the server API. Leave blank to disable."
   - name: Public
@@ -1064,12 +1093,14 @@ game:
     default: "true"
     type: bool
     help: "Make the server publicly visible in server browsers."
+    group: Basic
   - name: GamePort
     section: URL
     key: Port
     default: "7777"
     type: int
     help: "The main port for game connections."
+    group: Basic
   - name: MaxPlayers
     section: "/Script/Engine.GameSession"
     key: MaxPlayers
@@ -1082,18 +1113,21 @@ game:
     default: "Short description of your server and your community"
     type: text
     help: "A brief description of your server that appears in server browsers."
+    group: Basic
   - name: ServerName
     section: "/Script/Vein.VeinGameSession"
     key: ServerName
     default: "My Vein Server"
     type: str
     help: "The name of your server as it appears in server browsers."
+    group: Basic
   - name: ServerPassword
     section: "/Script/Vein.VeinGameSession"
     key: Password
     default: ""
     type: str
     help: "Password required to join the server. Leave blank for no password."
+    group: Basic
   - name: SteamQueryPort
     section: OnlineSubsystemSteam
     key: GameServerQueryPort
@@ -1126,9 +1160,6 @@ manager:
     type: str
     default: public
     help: "The Steam branch to install the server from (e.g., stable, experimental)."
-    options:
-      - public
-      - experimental
   - name: Steam Branch Password
     section: Steam
     key: steam_branch_password
@@ -1210,7 +1241,13 @@ EOF
 	# A python virtual environment is now required by Warlock-based managers.
 	sudo -u $GAME_USER python3 -m venv "$GAME_DIR/.venv"
 	sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install --upgrade pip
-	sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install warlock-manager@git+https://github.com/BitsNBytes25/Warlock-Manager.git@$MANAGER_BRANCH
+	if [ "$MANAGER_SOURCE" == "pip" ]; then
+		# Install from PyPI with version specifier
+		sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install "warlock-manager${MANAGER_BRANCH}"
+	else
+		# Install directly from GitHub
+		sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install warlock-manager@git+https://github.com/BitsNBytes25/Warlock-Manager.git@$MANAGER_BRANCH
+	fi
 }
 
 
@@ -1259,7 +1296,7 @@ function install_application() {
 	install_steamcmd
 
 	# Install the management script
-	install_warlock_manager "$REPO" "$BRANCH" "main"
+	install_warlock_manager "$REPO" "$BRANCH" "2.1"
 
     # Install installer (this script) for uninstallation or manual work
 	download "https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/dist/installer.sh" "$GAME_DIR/installer.sh"
