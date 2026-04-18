@@ -41,6 +41,10 @@ from warlock_manager.libs.firewall import Firewall
 # Utilities provided by Warlock that are common to many applications
 from warlock_manager.libs import utils
 
+# This game supports full mod support
+# from warlock_manager.mods.base_mod import BaseMod
+from warlock_manager.mods.warlock_nexus_mod import WarlockNexusMod
+
 
 class GameApp(SteamApp):
 	"""
@@ -54,6 +58,7 @@ class GameApp(SteamApp):
 		self.desc = 'VEIN Dedicated Server'
 		self.steam_id = '2131400'
 		self.service_handler = GameService
+		self.mod_handler = WarlockNexusMod
 		self.service_prefix = 'vein-'
 		# VEIN currently only supports a single instance
 		self.disabled_features = {'create_service', 'cmd', 'mods'}
@@ -61,9 +66,6 @@ class GameApp(SteamApp):
 		self.configs = {
 			'manager': INIConfig('manager', os.path.join(utils.get_app_directory(), '.settings.ini'))
 		}
-		self.load()
-
-		self.steam_branch = self.get_option_value('Steam Branch')
 
 	def first_run(self) -> bool:
 		"""
@@ -91,16 +93,6 @@ class GameApp(SteamApp):
 			logging.info('Detected %d services, skipping first-run service creation.' % len(services))
 
 		return True
-
-	def option_value_updated(self, option: str, previous_value, new_value):
-		if option == 'Steam Branch':
-			self.update()
-
-	def get_option_options(self, option: str):
-		if option == 'Steam Branch':
-			return self.get_steam_branches()
-		else:
-			return super().get_option_options(option)
 
 	def post_update(self):
 		# VEIN requires the Steam client binary to be loaded into the game server
@@ -132,7 +124,10 @@ class GameService(HTTPService):
 		self.load()
 
 	def get_executable(self) -> str:
-		return os.path.join(self.get_app_directory(), 'Vein/Binaries/Linux/VeinServer-Linux-Test') + ' Vein'
+		if os.path.exists(os.path.join(self.get_app_directory(), 'Vein/Binaries/Linux/VeinServer-Linux-Test')):
+			return os.path.join(self.get_app_directory(), 'Vein/Binaries/Linux/VeinServer-Linux-Test') + ' Vein'
+		else:
+			return os.path.join(self.get_app_directory(), 'Vein/Binaries/Linux/VeinServer-Linux-DebugGame') + ' Vein'
 
 	def option_value_updated(self, option: str, previous_value, new_value):
 		"""

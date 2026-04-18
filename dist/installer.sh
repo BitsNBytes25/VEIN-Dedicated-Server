@@ -33,6 +33,7 @@
 #   --branch=<str> - Use a specific branch of the management script repository DEFAULT=main
 #
 # Changelog:
+#   20260325 - Finish migration to 2.1.x
 #   20260319 - Update boilerplate script for v2 of the API
 #   20251103 - New installer
 
@@ -41,7 +42,7 @@
 ############################################
 
 # Name of the game (used to create the directory)
-INSTALLER_VERSION="v20260319"
+INSTALLER_VERSION="v20260325"
 GAME="VEIN"
 GAME_DESC="VEIN Dedicated Server"
 REPO="BitsNBytes25/VEIN-Dedicated-Server"
@@ -1022,6 +1023,7 @@ function install_steamcmd() {
 # @param $3 Warlock Manager Branch to use (default: release-v2)
 #
 # CHANGELOG:
+#   20260326 - Add support for full version strings
 #   20260325 - Update to install warlock-manager from PyPI if a version number is specified instead of a branch name
 #   20260319 - Add third option to specify the version of Warlock Manager to use as the base
 #   20260301 - Update to install warlock-manager from github (along with its dependencies) as a pip package
@@ -1042,10 +1044,16 @@ function install_warlock_manager() {
 	local MANAGER_SOURCE
 	local MANAGER_SHA
 
-	if [[ "$MANAGER_BRANCH" =~ ^[0-9]+\.[0-9]+$ ]]; then
+	if [[ "$MANAGER_BRANCH" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+		# Support 1.2.3 version strings; indicates at least .3 of the revision.
+		MANAGER_SOURCE="pip"
+		MANAGER_BRANCH=">=${MANAGER_BRANCH},<=$(echo $MANAGER_BRANCH | sed 's:\.[0-9]*$:.9999:')"
+	elif [[ "$MANAGER_BRANCH" =~ ^[0-9]+\.[0-9]+$ ]]; then
+		# Support 1.2 version strings; indicates it just must be within this API version
         MANAGER_SOURCE="pip"
         MANAGER_BRANCH=">=${MANAGER_BRANCH}.0,<=${MANAGER_BRANCH}.9999"
     else
+    	# Not a version string, probably a branch name instead.
         MANAGER_SOURCE="github"
     fi
 
@@ -1292,11 +1300,14 @@ function install_application() {
 		fi
 	fi
 
+	# Most games install into AppFiles, so ensure it's created.
+	[ -e "$GAME_DIR/AppFiles" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/AppFiles"
+
 	# Install steam binary and steamcmd
 	install_steamcmd
 
 	# Install the management script
-	install_warlock_manager "$REPO" "$BRANCH" "2.1"
+	install_warlock_manager "$REPO" "$BRANCH" "2.2"
 
     # Install installer (this script) for uninstallation or manual work
 	download "https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/dist/installer.sh" "$GAME_DIR/installer.sh"
@@ -1315,6 +1326,49 @@ function postinstall() {
 
 	# First run setup
 	$GAME_DIR/manage.py first-run
+}
+
+##
+# Upgrade logic for 1.0 to 2.2 to handle migration of ENV and overrides
+#
+function upgrade_application_1_0() {
+	local LEGACY_SERVICE="vein-server"
+	local SERVICE_PATH="/etc/systemd/system/${LEGACY_SERVICE}.service"
+
+	# Migrate existing service to new format
+	# This gets overwrote by the manager, but is needed to tell the system that the service is here.
+	if [ -e "${SERVICE_PATH}" ] && [ ! -e "$GAME_DIR/Environments" ]; then
+		sudo -u $GAME_USER mkdir -p "$GAME_DIR/Environments"
+		# Extract out current environment variables from the systemd file into their own dedicated file
+		egrep '^Environment' "${SERVICE_PATH}" | sed 's:^Environment=::' > "$GAME_DIR/Environments/${LEGACY_SERVICE}.env"
+		chown $GAME_USER:$GAME_USER "$GAME_DIR/Environments/${LEGACY_SERVICE}.env"
+		# Trim out those envs now that they're not longer required
+		cat "${SERVICE_PATH}" | egrep -v '^Environment=' > "${SERVICE_PATH}.new"
+		mv "${SERVICE_PATH}.new" "${SERVICE_PATH}"
+
+		if [ -e "${SERVICE_PATH}.d" ] && [ -e "${SERVICE_PATH}.d/override.conf" ]; then
+			# If there is an override, (used in version 1.0),
+			# grab the CLI and move it to a notes document so the operator can manually review it.
+			touch "$GAME_DIR/Notes.txt"
+			echo "    !! IMPORTANT - Service commands are now generated dynamically, " >> "$GAME_DIR/Notes.txt"
+			echo "    so please manually migrate the following CLI options to your game." >> "$GAME_DIR/Notes.txt"
+			echo "" >> "$GAME_DIR/Notes.txt"
+			egrep '^ExecStart=' "${SERVICE_PATH}.d/override.conf" >> "$GAME_DIR/Notes.txt"
+			chown $GAME_USER:$GAME_USER "$GAME_DIR/Notes.txt"
+			rm -fr "${SERVICE_PATH}.d/override.conf"
+			rm -fr "${SERVICE_PATH}.d"
+		fi
+	fi
+}
+
+##
+# Perform any steps necessary for upgrading an existing installation.
+#
+function upgrade_application() {
+	print_header "Existing installation detected, performing upgrade"
+
+	# Uncomment if you need this
+	upgrade_application_1_0
 }
 
 ##
@@ -1431,6 +1485,11 @@ if [ "$MODE" == "reinstall" ]; then
 
 	# Print some instructions and useful tips
     print_header "$GAME_DESC Installation Complete"
+
+	# If there are notes generated during installation, print them now.
+    if [ -e "$GAME_DIR/Notes.txt" ]; then
+    	cat "$GAME_DIR/Notes.txt"
+	fi
 fi
 
 if [ "$MODE" == "uninstall" ]; then
