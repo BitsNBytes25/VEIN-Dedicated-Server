@@ -103,7 +103,10 @@ class GameApp(SteamApp):
 			shutil.copy2(src, dst)
 			utils.ensure_file_ownership(dst)
 
-		os.chmod(os.path.join(utils.get_app_directory(), 'AppFiles/Vein/Binaries/Linux/VeinServer-Linux-Test'), 0o755)
+		if os.path.exists(os.path.join(utils.get_app_directory(), 'AppFiles/Vein/Binaries/Linux/VeinServer-Linux-Test')):
+			os.chmod(os.path.join(utils.get_app_directory(), 'AppFiles/Vein/Binaries/Linux/VeinServer-Linux-Test'), 0o755)
+		if os.path.exists(os.path.join(utils.get_app_directory(), 'AppFiles/Vein/Binaries/Linux/VeinServer-Linux-DebugGame')):
+			os.chmod(os.path.join(utils.get_app_directory(), 'AppFiles/Vein/Binaries/Linux/VeinServer-Linux-DebugGame'), 0o755)
 
 
 class GameService(HTTPService):
