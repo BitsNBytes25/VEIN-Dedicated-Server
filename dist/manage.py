@@ -166,6 +166,8 @@ class GameService(HTTPService):
 		:param new_value:
 		:return:
 		"""
+		success = None
+		rebuild = False
 
 		# Special option actions
 		if option == 'GamePort':
@@ -173,11 +175,20 @@ class GameService(HTTPService):
 			if previous_value:
 				Firewall.remove(int(previous_value), 'udp')
 			Firewall.allow(int(new_value), 'udp', '%s game port' % self.game.desc)
+			rebuild = True
+			success = True
 		elif option == 'SteamQueryPort':
 			# Update firewall for game port change
 			if previous_value:
 				Firewall.remove(int(previous_value), 'udp')
 			Firewall.allow(int(new_value), 'udp', '%s Steam query port' % self.game.desc)
+			rebuild = True
+			success = True
+
+		if rebuild:
+			self.build_systemd_config()
+
+		return success
 
 	def is_api_enabled(self) -> bool:
 		"""
