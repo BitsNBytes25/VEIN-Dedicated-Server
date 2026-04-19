@@ -15,6 +15,7 @@ import shutil
 # Common options are:
 # from warlock_manager.apps.base_app import BaseApp
 from warlock_manager.apps.steam_app import SteamApp
+from warlock_manager.formatters.cli_formatter import cli_formatter
 
 # Import the appropriate type of handler for the game services.
 # Common options are:
@@ -126,15 +127,23 @@ class GameService(HTTPService):
 		self.configs = {
 			'game': UnrealConfig('game', os.path.join(self.get_app_directory(), 'Vein/Saved/Config/LinuxServer/Game.ini')),
 			'gus': UnrealConfig('gus', os.path.join(self.get_app_directory(), 'Vein/Saved/Config/LinuxServer/GameUserSettings.ini')),
-			'engine': UnrealConfig('engine', os.path.join(self.get_app_directory(), 'Vein/Saved/Config/LinuxServer/Engine.ini'))
+			'engine': UnrealConfig('engine', os.path.join(self.get_app_directory(), 'Vein/Saved/Config/LinuxServer/Engine.ini')),
+			'service': INIConfig('service', os.path.join(utils.get_app_directory(), 'Configs', 'service.%s.ini' % self.service))
 		}
 		self.load()
 
 	def get_executable(self) -> str:
 		if os.path.exists(os.path.join(self.get_app_directory(), 'Vein/Binaries/Linux/VeinServer-Linux-Test')):
-			return os.path.join(self.get_app_directory(), 'Vein/Binaries/Linux/VeinServer-Linux-Test') + ' Vein'
+			path = os.path.join(self.get_app_directory(), 'Vein/Binaries/Linux/VeinServer-Linux-Test') + ' Vein'
 		else:
-			return os.path.join(self.get_app_directory(), 'Vein/Binaries/Linux/VeinServer-Linux-DebugGame') + ' Vein'
+			path = os.path.join(self.get_app_directory(), 'Vein/Binaries/Linux/VeinServer-Linux-DebugGame') + ' Vein'
+
+		# Add arguments for the service
+		args = cli_formatter(self.configs['service'], 'flag', sep='=')
+		if args:
+			path += ' ' + args
+
+		return path
 
 	def option_value_updated(self, option: str, previous_value, new_value):
 		"""

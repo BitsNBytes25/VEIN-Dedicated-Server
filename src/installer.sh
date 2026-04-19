@@ -117,6 +117,8 @@ function install_application() {
 	# Install the management script
 	install_warlock_manager "$REPO" "$BRANCH" "2.2"
 
+	[ -e "$GAME_DIR/Configs" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/Configs"
+
     # Install installer (this script) for uninstallation or manual work
 	download "https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/dist/installer.sh" "$GAME_DIR/installer.sh"
 	chmod +x "$GAME_DIR/installer.sh"

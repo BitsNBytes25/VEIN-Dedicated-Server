@@ -1102,13 +1102,6 @@ game:
     type: bool
     help: "Make the server publicly visible in server browsers."
     group: Basic
-  - name: GamePort
-    section: URL
-    key: Port
-    default: "7777"
-    type: int
-    help: "The main port for game connections."
-    group: Basic
   - name: MaxPlayers
     section: "/Script/Engine.GameSession"
     key: MaxPlayers
@@ -1136,18 +1129,27 @@ game:
     type: str
     help: "Password required to join the server. Leave blank for no password."
     group: Basic
-  - name: SteamQueryPort
-    section: OnlineSubsystemSteam
-    key: GameServerQueryPort
-    default: "27015"
-    type: int
-    help: "The Steam query port for server listing and queries."
   - name: VACEnabled
     section: OnlineSubsystemSteam
     key: bVACEnabled
     default: "false"
     type: bool
     help: "Enable Valve Anti-Cheat (VAC) on the server."
+service:
+  - name: GamePort
+    section: flag
+    key: port
+    default: "7777"
+    type: int
+    help: "The main port for game connections."
+    group: Settings
+  - name: SteamQueryPort
+    section: flag
+    key: QueryPort
+    default: "27015"
+    type: int
+    help: "The Steam query port for server listing and queries."
+    group: Settings
 engine:
   - name: AISpawner
     section: ConsoleVariables
@@ -1308,6 +1310,8 @@ function install_application() {
 
 	# Install the management script
 	install_warlock_manager "$REPO" "$BRANCH" "2.2"
+
+	[ -e "$GAME_DIR/Configs" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/Configs"
 
     # Install installer (this script) for uninstallation or manual work
 	download "https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/dist/installer.sh" "$GAME_DIR/installer.sh"
