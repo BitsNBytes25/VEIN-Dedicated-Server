@@ -1017,6 +1017,7 @@ function install_steamcmd() {
 # Expects the following variables:
 #   GAME_USER    - User account to install the game under
 #   GAME_DIR     - Directory to install the game into
+#   WARLOCK_GUID - Warlock GUID for this game
 #
 # @param $1 Application Repo Name (e.g., user/repo)
 # @param $2 Application Branch Name (default: main)
@@ -1081,7 +1082,8 @@ function install_warlock_manager() {
 	"source": "github",
 	"repo": "${REPO}",
 	"branch": "${BRANCH}",
-	"commit": "${MANAGER_SHA}"
+	"commit": "${MANAGER_SHA}",
+	"game": "${WARLOCK_GUID}"
 }
 EOF
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/.manage.json"
@@ -1184,12 +1186,14 @@ manager:
     type: str
     default: public
     help: "The Steam branch to install the server from (e.g., stable, experimental)."
+    group: Settings
   - name: Steam Branch Password
     section: Steam
     key: steam_branch_password
     type: str
     default: ""
     help: "The password for accessing a private Steam branch, if applicable."
+    group: Settings
   - name: Shutdown Warning 5 Minutes
     section: Messages
     key: shutdown_5min
@@ -1272,6 +1276,15 @@ EOF
 		# Install directly from GitHub
 		sudo -u $GAME_USER "$GAME_DIR/.venv/bin/pip" install warlock-manager@git+https://github.com/BitsNBytes25/Warlock-Manager.git@$MANAGER_BRANCH
 	fi
+
+	# Ensure warlock lib directory exists for supplemental data
+	[ -d "/var/lib/warlock" ] || mkdir -p "/var/lib/warlock"
+	[ -e /var/lib/warlock/.auth ] || touch /var/lib/warlock/.auth
+    # Ensure it's a valid 64-character hash
+    if [ "$(cat /var/lib/warlock/.auth | wc -c)" != "64" ]; then
+    	cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1 | tr -d '\n' > "/var/lib/warlock/.auth"
+    fi
+	[ -e "/var/lib/warlock/.email" ] || touch /var/lib/warlock/.email
 }
 
 
@@ -1323,7 +1336,7 @@ function install_application() {
 	install_steamcmd
 
 	# Install the management script
-	install_warlock_manager "$REPO" "$BRANCH" "2.2"
+	install_warlock_manager "$REPO" "$BRANCH" "2.2.4"
 
 	[ -e "$GAME_DIR/Configs" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/Configs"
 

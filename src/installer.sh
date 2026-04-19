@@ -115,7 +115,7 @@ function install_application() {
 	install_steamcmd
 
 	# Install the management script
-	install_warlock_manager "$REPO" "$BRANCH" "2.2"
+	install_warlock_manager "$REPO" "$BRANCH" "2.2.4"
 
 	[ -e "$GAME_DIR/Configs" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/Configs"
 

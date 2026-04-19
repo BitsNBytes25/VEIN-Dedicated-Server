@@ -128,6 +128,12 @@ class GameApp(SteamApp):
 		if os.path.exists(os.path.join(utils.get_app_directory(), 'AppFiles/Vein/Binaries/Linux/VeinServer-Linux-DebugGame')):
 			os.chmod(os.path.join(utils.get_app_directory(), 'AppFiles/Vein/Binaries/Linux/VeinServer-Linux-DebugGame'), 0o755)
 
+		# Different versions will use different binaries, so in the event those changed, (ie: during a Steam branch change),
+		# rebuild the system config for each service.
+		for service in self.get_services():
+			service.build_systemd_config()
+			service.reload()
+
 
 class GameService(HTTPService):
 	"""
@@ -189,6 +195,7 @@ class GameService(HTTPService):
 
 		if rebuild:
 			self.build_systemd_config()
+			self.reload()
 
 		return success
 
