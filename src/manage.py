@@ -68,6 +68,8 @@ class GameApp(SteamApp):
 			'manager': INIConfig('manager', os.path.join(utils.get_app_directory(), '.settings.ini'))
 		}
 
+		self.load()
+
 	def first_run(self) -> bool:
 		"""
 		Perform any first-run configuration needed for this game
@@ -157,14 +159,14 @@ class GameService(HTTPService):
 		rebuild = False
 
 		# Special option actions
-		if option == 'GamePort':
+		if option == 'GamePort' or option == 'LEGACY GamePort':
 			# Update firewall for game port change
 			if previous_value:
 				Firewall.remove(int(previous_value), 'udp')
 			Firewall.allow(int(new_value), 'udp', '%s game port' % self.game.desc)
 			rebuild = True
 			success = True
-		elif option == 'SteamQueryPort':
+		elif option == 'SteamQueryPort' or option == 'LEGACY SteamQueryPort':
 			# Update firewall for game port change
 			if previous_value:
 				Firewall.remove(int(previous_value), 'udp')
@@ -294,11 +296,19 @@ class GameService(HTTPService):
 		Get a list of port definitions for this service
 		:return:
 		"""
-		return [
+		ret = [
 			('APIPort', 'tcp', '%s API port' % self.game.name),
-			('GamePort', 'udp', '%s game port' % self.game.name),
-			('SteamQueryPort', 'udp', '%s query port' % self.game.name)
 		]
+
+		# This has been moved as of experimental / April 2026
+		if self.game.get_option_value('Steam Branch') != 'experimental':
+			ret.append(('LEGACY GamePort', 'udp', '%s game port' % self.game.name))
+			ret.append(('LEGACY SteamQueryPort', 'udp', '%s query port' % self.game.name))
+		else:
+			ret.append(('GamePort', 'udp', '%s game port' % self.game.name))
+			ret.append(('SteamQueryPort', 'udp', '%s query port' % self.game.name))
+
+		return ret
 
 	def create_service(self):
 		super().create_service()

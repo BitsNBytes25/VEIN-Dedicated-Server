@@ -1089,6 +1089,20 @@ EOF
 	# Install configuration definitions
 	cat > "$GAME_DIR/configs.yaml" <<EOF
 game:
+  - name: LEGACY GamePort
+    section: URL
+    key: port
+    default: "7777"
+    type: int
+    help: "(Public Version Only) The main port for game connections."
+    group: Settings
+  - name: LEGACY SteamQueryPort
+    section: OnlineSubsystemSteam
+    key: QueryPort
+    default: "27015"
+    type: int
+    help: "(Public Version Only) The Steam query port for server listing and queries."
+    group: Settings
   - name: APIPort
     section: "/Script/Vein.VeinGameSession"
     key: HTTPPort
